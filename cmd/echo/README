@@ -1,0 +1,29 @@
+# ECHO
+
+Echo the string(s) to standard output.
+
+#### USAGE
+```
+echo [flags]... [strings]...
+```
+
+#### DESCRIPTION
+
+echo writes each given string to standard output, with a space between each and a newline after the last one.
+```
+  -n            do not output the trailing newline
+  -e            enable interpretation of backslash escapes
+  -E            disable interpretation of backslash escapes (default)
+  -h, --help    display this help and exit
+  -v, --version output version information and exit
+```
+If -e is in effect, the following sequences are recognized:
+```
+  \\        backslash
+  \a        alert (BEL)
+  \b        backspace
+  \f        form feed
+  \n        new line
+  \r        carriage return
+  \t        horizontal tab
+```
