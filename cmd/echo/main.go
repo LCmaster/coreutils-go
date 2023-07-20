@@ -2,15 +2,41 @@ package main
 
 import (
 	"fmt"
+	"github.com/spf13/cobra"
 	"os"
 	"strconv"
 	"strings"
 )
 
-func printHelp() {
+var echoCmd = &cobra.Command{
+	Use:   "echo [flags]… [strings]…",
+	Short: "Echo the string(s) to standard output.",
+	Run: func(cmd *cobra.Command, args []string) {
+		showVersion, err := cmd.Flags().GetBool("version")
+		if err == nil && showVersion {
+			printVersion()
+			return
+		}
+
+		result := strings.Join(args, " ")
+
+		if enableStringEscape, err := cmd.Flags().GetBool("enable-escape"); err == nil && enableStringEscape {
+			str, err := strconv.Unquote(`"` + result + `"`)
+			if err == nil {
+				result = str
+			}
+		}
+		if newline, err := cmd.Flags().GetBool("newline"); err == nil && !newline {
+			fmt.Printf("%s\n", result)
+		} else {
+			fmt.Printf("%s", result)
+		}
+
+	},
+}
+
+func printHelp() string {
 	helpMessage := "" +
-		"Echo the STRING(s) to standard output.\n" +
-		"\n" +
 		"Usage:\n" +
 		"echo [OPTIONS]... [STRING]...\n" +
 		"\n" +
@@ -36,57 +62,26 @@ func printHelp() {
 		"  \\0NNN\t\tbyte with octal value NNN (1 to 3 digits)\n" +
 		"  \\xHH\t\tbyte with hexadecimal value HH (1 to 2 digits)\n"
 
-	fmt.Printf(helpMessage)
+	return helpMessage
 }
 
 func printVersion() {
 	fmt.Printf("version 1.0")
 }
 
+func init() {
+	echoCmd.Flags().BoolS("newline", "n", false, "do not output the trailing newline")
+	echoCmd.Flags().BoolS("disable-escape", "E", true, "disable interpretation of backslash escapes (default)")
+	echoCmd.Flags().BoolS("enable-escape", "e", false, "enable interpretation of backslash escapes")
+	echoCmd.Flags().BoolP("version", "v", false, "output version information and exit")
+	echoCmd.Flags().BoolP("help", "h", false, "display this help and exit")
+
+	echoCmd.SetUsageTemplate(printHelp())
+}
+
 func main() {
-	index := 0
-
-	newline := true
-	escape := false
-
-	args := os.Args[1:]
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if strings.HasPrefix(arg, "-") {
-			if arg == "-v" || arg == "--version" {
-				printVersion()
-				return
-			}
-			if arg == "-h" || arg == "--help" {
-				printHelp()
-				return
-			}
-
-			for _, flag := range arg[1:] {
-				switch flag {
-				case 'n':
-					escape = false
-				case 'E':
-					escape = false
-				case 'e':
-					escape = true
-				}
-			}
-
-		} else {
-			index = i
-			break
-		}
-	}
-
-	stringToPrint := strings.Join(args[index:], " ")
-
-	if !escape {
-		fmt.Printf(stringToPrint)
-	} else if newstr, err := strconv.Unquote("\"" + stringToPrint + "\""); err == nil {
-		fmt.Printf(newstr)
-	}
-	if newline {
-		fmt.Println()
+	if err := echoCmd.Execute(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
 	}
 }
