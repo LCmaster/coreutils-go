@@ -1,12 +1,50 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
-	"github.com/spf13/cobra"
 	"os"
-	"strconv"
 	"strings"
+
+	"github.com/LCmaster/coreutils-go/pkg/unescape"
+	"github.com/spf13/cobra"
 )
+
+func resolveEscapeFlag(cmd *cobra.Command, rawArgs []string) bool {
+	enableFlag := cmd.Flags().Lookup("enable-escape")
+	disableFlag := cmd.Flags().Lookup("disable-escape")
+
+	enableChanged := enableFlag != nil && enableFlag.Changed
+	disableChanged := disableFlag != nil && disableFlag.Changed
+
+	if enableChanged && !disableChanged {
+		return true
+	}
+	if !enableChanged && disableChanged {
+		return false
+	}
+	if enableChanged && disableChanged {
+		lastEscape := false
+		for _, arg := range rawArgs {
+			if arg == "--enable-escape" {
+				lastEscape = true
+			} else if arg == "--disable-escape" {
+				lastEscape = false
+			} else if strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") && len(arg) > 1 {
+				for _, r := range arg[1:] {
+					if r == 'e' {
+						lastEscape = true
+					} else if r == 'E' {
+						lastEscape = false
+					}
+				}
+			}
+		}
+		return lastEscape
+	}
+
+	return false
+}
 
 var echoCmd = &cobra.Command{
 	Use:   "echo [flags]… [strings]…",
@@ -18,20 +56,39 @@ var echoCmd = &cobra.Command{
 			return
 		}
 
-		result := strings.Join(args, " ")
+		enableEscape := resolveEscapeFlag(cmd, os.Args[1:])
+		newline, _ := cmd.Flags().GetBool("newline")
 
-		if enableStringEscape, err := cmd.Flags().GetBool("enable-escape"); err == nil && enableStringEscape {
-			str, err := strconv.Unquote(`"` + result + `"`)
-			if err == nil {
-				result = str
+		writer := bufio.NewWriter(cmd.OutOrStdout())
+		defer writer.Flush()
+
+		halt := false
+		for i, arg := range args {
+			if i > 0 {
+				if err := writer.WriteByte(' '); err != nil {
+					return
+				}
+			}
+
+			if enableEscape {
+				var out string
+				out, halt = unescape.Unescape(arg)
+				if _, err := writer.WriteString(out); err != nil {
+					return
+				}
+				if halt {
+					break
+				}
+			} else {
+				if _, err := writer.WriteString(arg); err != nil {
+					return
+				}
 			}
 		}
-		if newline, err := cmd.Flags().GetBool("newline"); err == nil && !newline {
-			fmt.Printf("%s\n", result)
-		} else {
-			fmt.Printf("%s", result)
-		}
 
+		if !newline && !halt {
+			_ = writer.WriteByte('\n')
+		}
 	},
 }
 
@@ -66,7 +123,7 @@ func printHelp() string {
 }
 
 func printVersion() {
-	fmt.Printf("version 1.0")
+	fmt.Println("version 0.1.0")
 }
 
 func init() {
