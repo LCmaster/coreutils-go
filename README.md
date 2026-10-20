@@ -29,7 +29,7 @@ A modern, fast, cross-platform rewrite of the classic **GNU Coreutils** in pure 
 | `cat` | Concatenate files and print on standard output | ⏳ Planned | — |
 | `yes` | Output a string repeatedly until killed | ⏳ Planned | — |
 | [`true`](cmd/true) | Return a successful exit status (0) | ✅ Stable | [README](cmd/true/README.md) |
-| `false` | Return an unsuccessful exit status (1) | ⏳ Planned | — |
+| [`false`](cmd/false) | Return an unsuccessful exit status (1) | ✅ Stable | [README](cmd/false/README.md) |
 | `wc` | Print newline, word, and byte counts | ⏳ Planned | — |
 | `head` | Output the first part of files | ⏳ Planned | — |
 | `tail` | Output the last part of files | ⏳ Planned | — |
@@ -48,6 +48,7 @@ Install utilities directly using Go:
 # Install specific utilities
 go install github.com/LCmaster/coreutils-go/cmd/echo@latest
 go install github.com/LCmaster/coreutils-go/cmd/true@latest
+go install github.com/LCmaster/coreutils-go/cmd/false@latest
 
 # Or install all utilities
 go install github.com/LCmaster/coreutils-go/cmd/...@latest
@@ -106,6 +107,22 @@ $ echo $?
 
 See [cmd/true/README.md](cmd/true/README.md) for full details.
 
+### `false`
+
+```sh
+# Exit unsuccessfully (code 1)
+$ false
+$ echo $?
+1
+
+# Any arbitrary arguments or flags are ignored
+$ false ignored arguments --even-flags
+$ echo $?
+1
+```
+
+See [cmd/false/README.md](cmd/false/README.md) for full details.
+
 ---
 
 ## Project Structure
@@ -117,6 +134,10 @@ coreutils-go/
 │   │   ├── main.go        # Cobra CLI definitions & stream writing
 │   │   ├── main_test.go   # Comprehensive integration & unit tests
 │   │   └── README.md      # echo manual & usage guide
+│   ├── false/             # false command CLI implementation
+│   │   ├── main.go        # false command entry point
+│   │   ├── main_test.go   # Complete test suite
+│   │   └── README.md      # false manual & usage guide
 │   └── true/              # true command CLI implementation
 │       ├── main.go        # true command entry point
 │       ├── main_test.go   # Complete test suite

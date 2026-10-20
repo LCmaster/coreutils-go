@@ -3,20 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
-
-	"github.com/spf13/cobra"
 )
-
-var trueCmd = &cobra.Command{
-	Use:   "true [ignored command line arguments]",
-	Short: "Do nothing, successfully.",
-	Run: func(cmd *cobra.Command, args []string) {
-		// Nothing to be done here...
-	},
-	FParseErrWhitelist: cobra.FParseErrWhitelist{
-		UnknownFlags: true,
-	},
-}
 
 func printHelp() string {
 	return "Usage:\n" +
@@ -30,15 +17,9 @@ func printHelp() string {
 		"  -v, --version  output version information and exit\n"
 }
 
-func printVersion() {
-	fmt.Println("version 0.1.0")
-}
-
-func init() {
-	trueCmd.Flags().BoolP("version", "v", false, "output version information and exit")
-	trueCmd.Flags().BoolP("help", "h", false, "display this help and exit")
-
-	trueCmd.SetUsageTemplate(printHelp())
+func printVersion() error {
+	_, err := fmt.Println("true (coreutils-go) 0.1.0")
+	return err
 }
 
 func main() {
@@ -47,13 +28,17 @@ func main() {
 	if len(os.Args) == 2 {
 		switch os.Args[1] {
 		case "-h", "--help":
-			fmt.Print(printHelp())
+			if _, err := fmt.Print(printHelp()); err != nil {
+				os.Exit(1)
+			}
 			return
 		case "-v", "--version":
-			printVersion()
+			if err := printVersion(); err != nil {
+				os.Exit(1)
+			}
 			return
 		}
 	}
 
-	// In all other cases (no args, multiple args, or ignored flags), exit 0 immediately
+	// In all other cases, exit 0 successfully
 }

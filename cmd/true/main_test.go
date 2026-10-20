@@ -229,8 +229,8 @@ func TestTrue_VersionFlag(t *testing.T) {
 			if stderr != "" {
 				t.Errorf("expected empty stderr, got %q", stderr)
 			}
-			if !strings.Contains(stdout, "version 0.1.0") {
-				t.Errorf("expected version output to contain 'version 0.1.0', got %q", stdout)
+			if !strings.Contains(stdout, "true (coreutils-go) 0.1.0") {
+				t.Errorf("expected version output to contain 'true (coreutils-go) 0.1.0', got %q", stdout)
 			}
 			if !strings.HasSuffix(stdout, "\n") {
 				t.Errorf("expected version output to end with newline, got %q", stdout)
@@ -347,7 +347,7 @@ func TestUnit_PrintVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("captureStdout error: %v", err)
 	}
-	if out != "version 0.1.0\n" {
-		t.Errorf("expected 'version 0.1.0\\n', got %q", out)
+	if out != "true (coreutils-go) 0.1.0\n" {
+		t.Errorf("expected 'true (coreutils-go) 0.1.0\\n', got %q", out)
 	}
 }
