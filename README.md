@@ -25,7 +25,7 @@ A modern, fast, cross-platform rewrite of the classic **GNU Coreutils** in pure 
 
 | Utility | Description | Status | Documentation |
 | :--- | :--- | :---: | :--- |
-| [`echo`](cmd/echo) | Write arguments to standard output | ✅ Stable | [README](cmd/echo/README) |
+| [`echo`](cmd/echo) | Write arguments to standard output | ✅ Stable | [README](cmd/echo/README.md) |
 | `cat` | Concatenate files and print on standard output | ⏳ Planned | — |
 | `yes` | Output a string repeatedly until killed | ⏳ Planned | — |
 | `true` | Return a successful exit status (0) | ⏳ Planned | — |
@@ -82,7 +82,7 @@ $ echo -e "First part\cThis will not be printed"
 First part$
 ```
 
-See the [cmd/echo README](cmd/echo/README) for detailed option tables, supported escape codes, and examples.
+See the [cmd/echo README](cmd/echo/README.md) for detailed option tables, supported escape codes, and examples.
 
 ---
 
