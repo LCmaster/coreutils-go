@@ -27,7 +27,7 @@ A modern, fast, cross-platform rewrite of the classic **GNU Coreutils** in pure 
 | :--- | :--- | :---: | :--- |
 | [`echo`](cmd/echo) | Write arguments to standard output | ✅ Stable | [README](cmd/echo/README.md) |
 | `cat` | Concatenate files and print on standard output | ⏳ Planned | — |
-| `yes` | Output a string repeatedly until killed | ⏳ Planned | — |
+| [`yes`](cmd/yes) | Output a string repeatedly until killed | ✅ Stable | [README](cmd/yes/README.md) |
 | [`true`](cmd/true) | Return a successful exit status (0) | ✅ Stable | [README](cmd/true/README.md) |
 | [`false`](cmd/false) | Return an unsuccessful exit status (1) | ✅ Stable | [README](cmd/false/README.md) |
 | `wc` | Print newline, word, and byte counts | ⏳ Planned | — |
@@ -47,6 +47,7 @@ Install utilities directly using Go:
 ```sh
 # Install specific utilities
 go install github.com/LCmaster/coreutils-go/cmd/echo@latest
+go install github.com/LCmaster/coreutils-go/cmd/yes@latest
 go install github.com/LCmaster/coreutils-go/cmd/true@latest
 go install github.com/LCmaster/coreutils-go/cmd/false@latest
 
@@ -90,6 +91,27 @@ First part$
 ```
 
 See [cmd/echo/README.md](cmd/echo/README.md) for full details.
+
+### `yes`
+
+```sh
+# Default repetition ('y')
+$ yes
+y
+y
+...
+
+# Custom string repetition
+$ yes custom text
+custom text
+custom text
+...
+
+# Automated confirmations
+$ yes | rm -i *.tmp
+```
+
+See [cmd/yes/README.md](cmd/yes/README.md) for full details.
 
 ### `true`
 
@@ -138,10 +160,14 @@ coreutils-go/
 │   │   ├── main.go        # false command entry point
 │   │   ├── main_test.go   # Complete test suite
 │   │   └── README.md      # false manual & usage guide
-│   └── true/              # true command CLI implementation
-│       ├── main.go        # true command entry point
-│       ├── main_test.go   # Complete test suite
-│       └── README.md      # true manual & usage guide
+│   ├── true/              # true command CLI implementation
+│   │   ├── main.go        # true command entry point
+│   │   ├── main_test.go   # Complete test suite
+│   │   └── README.md      # true manual & usage guide
+│   └── yes/               # yes command CLI implementation
+│       ├── main.go        # High-performance 64KB chunk stream
+│       ├── main_test.go   # Tests & throughput benchmark
+│       └── README.md      # yes manual & usage guide
 ├── pkg/
 │   └── unescape/          # Shared escape sequence interpreter
 │       ├── unescape.go
