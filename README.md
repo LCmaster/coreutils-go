@@ -28,7 +28,7 @@ A modern, fast, cross-platform rewrite of the classic **GNU Coreutils** in pure 
 | [`echo`](cmd/echo) | Write arguments to standard output | ✅ Stable | [README](cmd/echo/README.md) |
 | `cat` | Concatenate files and print on standard output | ⏳ Planned | — |
 | `yes` | Output a string repeatedly until killed | ⏳ Planned | — |
-| `true` | Return a successful exit status (0) | ⏳ Planned | — |
+| [`true`](cmd/true) | Return a successful exit status (0) | ✅ Stable | [README](cmd/true/README.md) |
 | `false` | Return an unsuccessful exit status (1) | ⏳ Planned | — |
 | `wc` | Print newline, word, and byte counts | ⏳ Planned | — |
 | `head` | Output the first part of files | ⏳ Planned | — |
@@ -42,11 +42,15 @@ A modern, fast, cross-platform rewrite of the classic **GNU Coreutils** in pure 
 
 ### Using `go install`
 
-Install individual utilities directly using Go:
+Install utilities directly using Go:
 
 ```sh
-# Install echo
+# Install specific utilities
 go install github.com/LCmaster/coreutils-go/cmd/echo@latest
+go install github.com/LCmaster/coreutils-go/cmd/true@latest
+
+# Or install all utilities
+go install github.com/LCmaster/coreutils-go/cmd/...@latest
 ```
 
 ### Building from Source
@@ -57,13 +61,15 @@ Clone the repository and build the binaries locally:
 git clone https://github.com/LCmaster/coreutils-go.git
 cd coreutils-go
 
-# Build echo
-go build -o bin/echo ./cmd/echo
+# Build all utilities
+go build -o bin/ ./cmd/...
 ```
 
 ---
 
-## Usage Example: `echo`
+## Usage Examples
+
+### `echo`
 
 ```sh
 # Basic text printing
@@ -82,7 +88,23 @@ $ echo -e "First part\cThis will not be printed"
 First part$
 ```
 
-See the [cmd/echo README](cmd/echo/README.md) for detailed option tables, supported escape codes, and examples.
+See [cmd/echo/README.md](cmd/echo/README.md) for full details.
+
+### `true`
+
+```sh
+# Exit successfully (code 0)
+$ true
+$ echo $?
+0
+
+# Any arbitrary arguments or flags are ignored
+$ true ignored arguments --even-flags
+$ echo $?
+0
+```
+
+See [cmd/true/README.md](cmd/true/README.md) for full details.
 
 ---
 
@@ -91,10 +113,14 @@ See the [cmd/echo README](cmd/echo/README.md) for detailed option tables, suppor
 ```text
 coreutils-go/
 ├── cmd/
-│   └── echo/              # echo command CLI implementation
-│       ├── main.go        # Cobra CLI definitions & stream writing
-│       ├── main_test.go   # Comprehensive integration & unit tests
-│       └── README         # echo manual & usage guide
+│   ├── echo/              # echo command CLI implementation
+│   │   ├── main.go        # Cobra CLI definitions & stream writing
+│   │   ├── main_test.go   # Comprehensive integration & unit tests
+│   │   └── README.md      # echo manual & usage guide
+│   └── true/              # true command CLI implementation
+│       ├── main.go        # true command entry point
+│       ├── main_test.go   # Complete test suite
+│       └── README.md      # true manual & usage guide
 ├── pkg/
 │   └── unescape/          # Shared escape sequence interpreter
 │       ├── unescape.go
