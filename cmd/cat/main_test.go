@@ -13,8 +13,6 @@ import (
 	"syscall"
 	"testing"
 	"time"
-
-	"github.com/spf13/cobra"
 )
 
 var binaryPath string
@@ -137,12 +135,12 @@ func TestUnit_PrintHelp(t *testing.T) {
 }
 
 func TestUnit_PrintVersion(t *testing.T) {
-	out, err := captureStdout(printVersion)
-	if err != nil {
+	var buf bytes.Buffer
+	if err := printVersion(&buf); err != nil {
 		t.Fatalf("printVersion error: %v", err)
 	}
-	if out != "cat (coreutils-go) 0.1.0\n" {
-		t.Errorf("printVersion() = %q", out)
+	if buf.String() != "cat (coreutils-go) 0.1.0\n" {
+		t.Errorf("printVersion() = %q, want %q", buf.String(), "cat (coreutils-go) 0.1.0\n")
 	}
 }
 
@@ -244,25 +242,17 @@ func TestUnit_IsSameAsOutput(t *testing.T) {
 	}
 }
 
-func TestUnit_ParseOptions(t *testing.T) {
-	cmd := &cobra.Command{}
-	f := cmd.Flags()
-	f.BoolP("show-all", "A", false, "")
-	f.BoolP("number-nonblank", "b", false, "")
-	f.BoolS("e", "e", false, "")
-	f.BoolP("show-ends", "E", false, "")
-	f.BoolP("number", "n", false, "")
-	f.BoolP("squeeze-blank", "s", false, "")
-	f.BoolS("t", "t", false, "")
-	f.BoolP("show-tabs", "T", false, "")
-	f.BoolS("unbuffered", "u", false, "")
-	f.BoolP("show-nonprinting", "v", false, "")
-
-	if err := cmd.ParseFlags([]string{"-b", "-n", "-A"}); err != nil {
+func TestUnit_ParseArgs(t *testing.T) {
+	opts, files, action, err := parseArgs([]string{"-b", "-n", "-A", "test.txt"})
+	if err != nil {
 		t.Fatal(err)
 	}
-
-	opts := parseOptions(cmd)
+	if action != ActionRun {
+		t.Errorf("expected ActionRun, got %v", action)
+	}
+	if len(files) != 1 || files[0] != "test.txt" {
+		t.Errorf("expected files [test.txt], got %v", files)
+	}
 	if !opts.NumberNonBlank {
 		t.Error("expected NumberNonBlank to be true")
 	}
@@ -271,6 +261,41 @@ func TestUnit_ParseOptions(t *testing.T) {
 	}
 	if !opts.ShowNonPrinting || !opts.ShowEnds || !opts.ShowTabs {
 		t.Error("expected ShowNonPrinting, ShowEnds, and ShowTabs to be true for -A")
+	}
+
+	// Test -e shorthand
+	optsE, _, _, err := parseArgs([]string{"-e"})
+	if err != nil || !optsE.ShowNonPrinting || !optsE.ShowEnds || optsE.ShowTabs {
+		t.Errorf("expected -e to set ShowNonPrinting and ShowEnds, got %+v", optsE)
+	}
+
+	// Test -t shorthand
+	optsT, _, _, err := parseArgs([]string{"-t"})
+	if err != nil || !optsT.ShowNonPrinting || optsT.ShowEnds || !optsT.ShowTabs {
+		t.Errorf("expected -t to set ShowNonPrinting and ShowTabs, got %+v", optsT)
+	}
+
+	// Test --help and --version
+	_, _, actionHelp, err := parseArgs([]string{"--help"})
+	if err != nil || actionHelp != ActionHelp {
+		t.Errorf("expected ActionHelp, got %v (err=%v)", actionHelp, err)
+	}
+
+	_, _, actionVer, err := parseArgs([]string{"--version"})
+	if err != nil || actionVer != ActionVersion {
+		t.Errorf("expected ActionVersion, got %v (err=%v)", actionVer, err)
+	}
+
+	// Test invalid option
+	_, _, _, err = parseArgs([]string{"-h"})
+	if err == nil || !strings.Contains(err.Error(), "invalid option -- 'h'") {
+		t.Errorf("expected invalid option -- 'h', got %v", err)
+	}
+
+	// Test unrecognized long option
+	_, _, _, err = parseArgs([]string{"--unknown"})
+	if err == nil || !strings.Contains(err.Error(), "unrecognized option '--unknown'") {
+		t.Errorf("expected unrecognized option '--unknown', got %v", err)
 	}
 }
 

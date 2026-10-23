@@ -2,80 +2,105 @@ package main
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
+	"io"
 	"os"
-
-	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
+	"strings"
 )
 
-func parseOptions(cmd *cobra.Command) Options {
-	f := cmd.Flags()
+type CLIAction int
 
-	showAll, _ := f.GetBool("show-all")
-	showNonPrinting, _ := f.GetBool("show-nonprinting")
-	showEnds, _ := f.GetBool("show-ends")
-	showTabs, _ := f.GetBool("show-tabs")
-	numberNonBlank, _ := f.GetBool("number-nonblank")
-	number, _ := f.GetBool("number")
-	squeezeBlank, _ := f.GetBool("squeeze-blank")
-	unbuffered, _ := f.GetBool("unbuffered")
-	eFlag, _ := f.GetBool("e")
-	tFlag, _ := f.GetBool("t")
+const (
+	ActionRun CLIAction = iota
+	ActionHelp
+	ActionVersion
+)
 
-	return Options{
-		NumberNonBlank:  numberNonBlank,
-		Number:          number && !numberNonBlank,
-		SqueezeBlank:    squeezeBlank,
-		ShowEnds:        showEnds || showAll || eFlag,
-		ShowTabs:        showTabs || showAll || tFlag,
-		ShowNonPrinting: showNonPrinting || showAll || eFlag || tFlag,
-		Unbuffered:      unbuffered,
-	}
-}
+func parseArgs(args []string) (Options, []string, CLIAction, error) {
+	var opts Options
+	var files []string
 
-var catCmd = &cobra.Command{
-	Use:   "cat [OPTION]... [FILE]...",
-	Short: "Concatenate FILE(s) to standard output.",
-	Run: func(cmd *cobra.Command, args []string) {
-		if showVersion, err := cmd.Flags().GetBool("version"); err == nil && showVersion {
-			if err := printVersion(); err != nil {
-				os.Exit(1)
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+
+		if arg == "--" {
+			files = append(files, args[i+1:]...)
+			break
+		}
+
+		if arg == "-" || !strings.HasPrefix(arg, "-") {
+			files = append(files, arg)
+			continue
+		}
+
+		switch arg {
+		case "--help":
+			return opts, nil, ActionHelp, nil
+		case "--version":
+			return opts, nil, ActionVersion, nil
+		case "--show-all":
+			opts.ShowNonPrinting = true
+			opts.ShowEnds = true
+			opts.ShowTabs = true
+		case "--number-nonblank":
+			opts.NumberNonBlank = true
+		case "--show-ends":
+			opts.ShowEnds = true
+		case "--number":
+			opts.Number = true
+		case "--squeeze-blank":
+			opts.SqueezeBlank = true
+		case "--show-tabs":
+			opts.ShowTabs = true
+		case "--show-nonprinting":
+			opts.ShowNonPrinting = true
+		default:
+			if strings.HasPrefix(arg, "--") {
+				return opts, nil, ActionRun, fmt.Errorf("unrecognized option '%s'", arg)
 			}
-			return
-		}
 
-		opts := parseOptions(cmd)
-		pipeline := newFormatPipeline(opts)
-		writer := bufio.NewWriterSize(cmd.OutOrStdout(), bufferSize)
-		defer writer.Flush()
-
-		if len(args) == 0 {
-			args = []string{"-"}
-		}
-
-		state := StreamState{LineNumber: 1}
-		hasError := false
-
-		for _, filename := range args {
-			err := processFile(filename, cmd.InOrStdin(), cmd.OutOrStdout(), opts, &state, pipeline, writer)
-			if err != nil {
-				if isBrokenPipe(err) {
-					break
+			for _, flagChar := range arg[1:] {
+				switch flagChar {
+				case 'A':
+					opts.ShowNonPrinting = true
+					opts.ShowEnds = true
+					opts.ShowTabs = true
+				case 'b':
+					opts.NumberNonBlank = true
+				case 'e':
+					opts.ShowNonPrinting = true
+					opts.ShowEnds = true
+				case 'E':
+					opts.ShowEnds = true
+				case 'n':
+					opts.Number = true
+				case 's':
+					opts.SqueezeBlank = true
+				case 't':
+					opts.ShowNonPrinting = true
+					opts.ShowTabs = true
+				case 'T':
+					opts.ShowTabs = true
+				case 'u':
+					opts.Unbuffered = true
+				case 'v':
+					opts.ShowNonPrinting = true
+				default:
+					return opts, nil, ActionRun, fmt.Errorf("invalid option -- '%c'", flagChar)
 				}
-				fmt.Fprintf(cmd.ErrOrStderr(), "cat: %s: %v\n", filename, err)
-				hasError = true
-			}
-			if err := writer.Flush(); err != nil && isBrokenPipe(err) {
-				break
 			}
 		}
+	}
 
-		if hasError {
-			os.Exit(1)
-		}
-	},
+	if opts.NumberNonBlank {
+		opts.Number = false
+	}
+
+	if len(files) == 0 {
+		files = []string{"-"}
+	}
+
+	return opts, files, ActionRun, nil
 }
 
 func printHelp() string {
@@ -107,44 +132,55 @@ func printHelp() string {
 	return helpMessage
 }
 
-func printVersion() error {
-	_, err := fmt.Println("cat (coreutils-go) 0.1.0")
+func printVersion(w io.Writer) error {
+	_, err := fmt.Fprintln(w, "cat (coreutils-go) 0.1.0")
 	return err
 }
 
-func init() {
-	catCmd.SilenceUsage = true
-	catCmd.SilenceErrors = true
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	opts, files, action, err := parseArgs(args)
+	if err != nil {
+		fmt.Fprintf(stderr, "cat: %v\nTry 'cat --help' for more information.\n", err)
+		return 1
+	}
 
-	f := catCmd.Flags()
-	f.BoolP("show-all", "A", false, "equivalent to -vET")
-	f.BoolP("number-nonblank", "b", false, "number nonempty output lines, overrides -n")
-	f.BoolS("e", "e", false, "equivalent to -vE")
-	f.BoolP("show-ends", "E", false, "display $ at end of each line")
-	f.BoolP("number", "n", false, "number all output lines")
-	f.BoolP("squeeze-blank", "s", false, "suppress repeated empty output lines")
-	f.BoolS("t", "t", false, "equivalent to -vT")
-	f.BoolP("show-tabs", "T", false, "display TAB characters as ^I")
-	f.BoolS("unbuffered", "u", false, "(ignored)")
-	f.BoolP("show-nonprinting", "v", false, "use ^ and M- notation, except for LFD and TAB")
+	switch action {
+	case ActionVersion:
+		_ = printVersion(stdout)
+		return 0
+	case ActionHelp:
+		fmt.Fprint(stdout, printHelp())
+		return 0
+	case ActionRun:
+		pipeline := newFormatPipeline(opts)
+		writer := bufio.NewWriterSize(stdout, bufferSize)
+		defer writer.Flush()
 
-	f.Bool("version", false, "output version information and exit")
-	f.Bool("help", false, "display this help and exit")
-	catCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
-		fmt.Fprint(cmd.OutOrStdout(), printHelp())
-	})
-	catCmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
-		if errors.Is(err, pflag.ErrHelp) {
-			return fmt.Errorf("unknown shorthand flag: 'h' in -h")
+		state := StreamState{LineNumber: 1}
+		hasError := false
+
+		for _, filename := range files {
+			err := processFile(filename, stdin, stdout, opts, &state, pipeline, writer)
+			if err != nil {
+				if isBrokenPipe(err) {
+					break
+				}
+				fmt.Fprintf(stderr, "cat: %s: %v\n", filename, err)
+				hasError = true
+			}
+			if err := writer.Flush(); err != nil && isBrokenPipe(err) {
+				break
+			}
 		}
-		return err
-	})
-	catCmd.SetUsageTemplate(printHelp())
+
+		if hasError {
+			return 1
+		}
+		return 0
+	}
+	return 0
 }
 
 func main() {
-	if err := catCmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
