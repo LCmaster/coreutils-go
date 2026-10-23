@@ -212,7 +212,9 @@ coreutils-go/
 │   │   ├── main_test.go   # Complete test suite
 │   │   └── README.md      # false manual & usage guide
 │   ├── pwd/               # pwd command CLI implementation
-│   │   ├── main.go        # Logical & physical path resolution and flag precedence
+│   │   ├── predicate.go   # Functional combinators & path validation predicates
+│   │   ├── pwd.go         # Domain model & path resolution strategies
+│   │   ├── main.go        # CLI argument parsing, streaming I/O & lifecycle
 │   │   ├── main_test.go   # Comprehensive integration & unit tests
 │   │   └── README.md      # pwd manual & usage guide
 │   ├── true/              # true command CLI implementation

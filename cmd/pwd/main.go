@@ -1,33 +1,25 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
-	"path/filepath"
 	"strings"
+	"syscall"
 )
 
-type Mode int
-type Action int
+type CLIAction int
 
 const (
-	LogicalMode Mode = iota
-	PhysicalMode
-)
-
-const (
-	ActionRun Action = iota
+	ActionRun CLIAction = iota
 	ActionHelp
 	ActionVersion
 )
 
-type Options struct {
-	Mode Mode
-}
-
-type ParseResult struct {
-	Action Action
-	Mode   Mode
+type ParsedOptions struct {
+	Action CLIAction
+	Mode   ResolutionMode
 }
 
 func printHelp() string {
@@ -48,8 +40,8 @@ func printVersion() error {
 	return err
 }
 
-func parseArgs(args []string) (ParseResult, error) {
-	var result ParseResult
+func parseArgs(args []string) (ParsedOptions, error) {
+	var options ParsedOptions
 	for _, arg := range args {
 		if arg == "--" {
 			break
@@ -57,102 +49,88 @@ func parseArgs(args []string) (ParseResult, error) {
 
 		switch arg {
 		case "--help":
-			result.Action = ActionHelp
-			return result, nil
+			options.Action = ActionHelp
+			return options, nil
 		case "--version":
-			result.Action = ActionVersion
-			return result, nil
+			options.Action = ActionVersion
+			return options, nil
 		case "--logical":
-			result.Mode = LogicalMode
+			options.Mode = LogicalMode
 			continue
 		case "--physical":
-			result.Mode = PhysicalMode
+			options.Mode = PhysicalMode
 			continue
 		}
 
+		if strings.HasPrefix(arg, "--") {
+			return options, fmt.Errorf("unrecognized option '%s'", arg)
+		}
+
 		if strings.HasPrefix(arg, "-") && len(arg) > 1 {
-			for _, opt := range arg[1:] {
-				switch opt {
+			for _, flagChar := range arg[1:] {
+				switch flagChar {
 				case 'h':
-					result.Action = ActionHelp
-					return result, nil
+					options.Action = ActionHelp
+					return options, nil
 				case 'v':
-					result.Action = ActionVersion
-					return result, nil
+					options.Action = ActionVersion
+					return options, nil
 				case 'L':
-					result.Mode = LogicalMode
+					options.Mode = LogicalMode
 				case 'P':
-					result.Mode = PhysicalMode
+					options.Mode = PhysicalMode
 				default:
-					return result, fmt.Errorf("invalid option -- '%c'", opt)
+					return options, fmt.Errorf("invalid option -- '%c'", flagChar)
 				}
 			}
 			continue
 		}
 	}
-	return result, nil
+	return options, nil
 }
 
-func explodePath(path string) []string {
-	return strings.FieldsFunc(path, func(r rune) bool {
-		return r == '/' || r == filepath.Separator
-	})
-}
-
-func hasDotComponents(path string) bool {
-	for _, segment := range explodePath(path) {
-		if segment == "." || segment == ".." {
-			return true
-		}
+func isBrokenPipe(err error) bool {
+	if err == nil {
+		return false
 	}
-	return false
+	if errors.Is(err, syscall.EPIPE) {
+		return true
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "broken pipe")
 }
 
-func getPhysicalDir() (string, error) {
-	path, err := os.Getwd()
+func run(args []string, stdout, stderr io.Writer) int {
+	options, err := parseArgs(args)
 	if err != nil {
-		return "", err
+		fmt.Fprintf(stderr, "pwd: %v\n", err)
+		return 1
 	}
-	return filepath.EvalSymlinks(path)
-}
 
-func getLogicalDir() (string, error) {
-	pwd := os.Getenv("PWD")
-	if pwd != "" && filepath.IsAbs(pwd) && !hasDotComponents(pwd) {
-		pwdStat, errPwd := os.Stat(pwd)
-		dotStat, errDot := os.Stat(".")
-		if errPwd == nil && errDot == nil && os.SameFile(pwdStat, dotStat) {
-			return pwd, nil
+	switch options.Action {
+	case ActionVersion:
+		if _, err := fmt.Fprintln(stdout, "pwd (coreutils-go) 0.1.0"); err != nil && !isBrokenPipe(err) {
+			return 1
 		}
+		return 0
+	case ActionHelp:
+		if _, err := fmt.Fprint(stdout, printHelp()); err != nil && !isBrokenPipe(err) {
+			return 1
+		}
+		return 0
+	case ActionRun:
+		path, err := resolveWorkingDir(options.Mode)
+		if err != nil {
+			fmt.Fprintf(stderr, "pwd: %v\n", err)
+			return 1
+		}
+		if _, err := fmt.Fprintln(stdout, path); err != nil && !isBrokenPipe(err) {
+			return 1
+		}
+		return 0
 	}
-
-	return getPhysicalDir()
-}
-
-func getWorkingDir(mode Mode) (string, error) {
-	if mode == PhysicalMode {
-		return getPhysicalDir()
-	}
-	return getLogicalDir()
+	return 0
 }
 
 func main() {
-	result, err := parseArgs(os.Args[1:])
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "pwd: %v\n", err)
-		os.Exit(1)
-	}
-	switch result.Action {
-	case ActionVersion:
-		_ = printVersion()
-	case ActionHelp:
-		fmt.Print(printHelp())
-	case ActionRun:
-		path, err := getWorkingDir(result.Mode)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "pwd: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println(path)
-	}
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }

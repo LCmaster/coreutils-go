@@ -94,7 +94,7 @@ func captureStdout(f func() error) (string, error) {
 }
 
 // ---------------------------------------------------------------------------
-// Unit tests
+// Unit tests: Help & Version
 // ---------------------------------------------------------------------------
 
 func TestUnit_PrintHelp(t *testing.T) {
@@ -128,6 +128,36 @@ func TestUnit_PrintVersion(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Unit tests: Functional Combinators & Predicates
+// ---------------------------------------------------------------------------
+
+func TestUnit_Functional_AnyMatch(t *testing.T) {
+	nums := []int{1, 3, 5, 8, 9}
+	isEven := func(n int) bool { return n%2 == 0 }
+	isNegative := func(n int) bool { return n < 0 }
+
+	if !anyMatch(nums, isEven) {
+		t.Error("expected anyMatch to find an even number")
+	}
+	if anyMatch(nums, isNegative) {
+		t.Error("expected anyMatch not to find negative numbers")
+	}
+}
+
+func TestUnit_Functional_SplitPathSegments(t *testing.T) {
+	segments := splitPathSegments("/a/b//c/d/")
+	expected := []string{"a", "b", "c", "d"}
+	if len(segments) != len(expected) {
+		t.Fatalf("splitPathSegments() got %v, want %v", segments, expected)
+	}
+	for i, seg := range segments {
+		if seg != expected[i] {
+			t.Errorf("segment[%d] = %q, want %q", i, seg, expected[i])
+		}
+	}
+}
+
 func TestUnit_HasDotComponents(t *testing.T) {
 	tests := []struct {
 		path string
@@ -148,115 +178,216 @@ func TestUnit_HasDotComponents(t *testing.T) {
 	}
 }
 
-func TestUnit_GetPhysicalDir(t *testing.T) {
-	dir, err := getPhysicalDir()
-	if err != nil {
-		t.Fatalf("getPhysicalDir() error: %v", err)
+func TestUnit_Functional_AllPredicates(t *testing.T) {
+	alwaysTrue := func(string) bool { return true }
+	alwaysFalse := func(string) bool { return false }
+
+	if !allPredicates(alwaysTrue, alwaysTrue)("test") {
+		t.Error("allPredicates(true, true) should be true")
 	}
-	if !filepath.IsAbs(dir) {
-		t.Errorf("getPhysicalDir() returned non-absolute path: %q", dir)
+	if allPredicates(alwaysTrue, alwaysFalse)("test") {
+		t.Error("allPredicates(true, false) should be false")
+	}
+	if allPredicates(alwaysFalse, alwaysTrue)("test") {
+		t.Error("allPredicates(false, true) should be false")
+	}
+	if !allPredicates()("test") {
+		t.Error("empty allPredicates() should be true")
 	}
 }
 
-func TestUnit_GetLogicalDir(t *testing.T) {
-	dir, err := getLogicalDir()
+func TestUnit_ResolveLogicalDir_FallsBackOnInvalidPWD(t *testing.T) {
+	physical, err := resolvePhysicalDir()
 	if err != nil {
-		t.Fatalf("getLogicalDir() error: %v", err)
+		t.Fatalf("resolvePhysicalDir() error: %v", err)
 	}
-	if !filepath.IsAbs(dir) {
-		t.Errorf("getLogicalDir() returned non-absolute path: %q", dir)
+
+	for _, invalid := range []string{"", "relative/path", "/definitely/not/a/real/dir"} {
+		t.Setenv("PWD", invalid)
+		got, err := resolveLogicalDir()
+		if err != nil {
+			t.Fatalf("PWD=%q: resolveLogicalDir() error: %v", invalid, err)
+		}
+		if got != physical {
+			t.Errorf("PWD=%q: resolveLogicalDir() = %q, want physical %q", invalid, got, physical)
+		}
 	}
 }
 
-func TestUnit_GetWorkingDir(t *testing.T) {
-	logical, err := getWorkingDir(LogicalMode)
+func TestUnit_ResolveLogicalDir_UsesValidPWD(t *testing.T) {
+	cwd, err := os.Getwd()
 	if err != nil {
-		t.Fatalf("getWorkingDir(LogicalMode) error: %v", err)
+		t.Fatalf("os.Getwd() error: %v", err)
 	}
-	physical, err := getWorkingDir(PhysicalMode)
+	t.Setenv("PWD", cwd)
+	got, err := resolveLogicalDir()
+	if err != nil || got != cwd {
+		t.Errorf("resolveLogicalDir() = %q, %v; want %q", got, err, cwd)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Unit tests: Directory Resolvers
+// ---------------------------------------------------------------------------
+
+func TestUnit_ResolvePhysicalDir(t *testing.T) {
+	dir, err := resolvePhysicalDir()
 	if err != nil {
-		t.Fatalf("getWorkingDir(PhysicalMode) error: %v", err)
+		t.Fatalf("resolvePhysicalDir() error: %v", err)
+	}
+	if !filepath.IsAbs(dir) {
+		t.Errorf("resolvePhysicalDir() returned non-absolute path: %q", dir)
+	}
+}
+
+func TestUnit_ResolveLogicalDir(t *testing.T) {
+	dir, err := resolveLogicalDir()
+	if err != nil {
+		t.Fatalf("resolveLogicalDir() error: %v", err)
+	}
+	if !filepath.IsAbs(dir) {
+		t.Errorf("resolveLogicalDir() returned non-absolute path: %q", dir)
+	}
+}
+
+func TestUnit_ResolveWorkingDir(t *testing.T) {
+	logical, err := resolveWorkingDir(LogicalMode)
+	if err != nil {
+		t.Fatalf("resolveWorkingDir(LogicalMode) error: %v", err)
+	}
+	physical, err := resolveWorkingDir(PhysicalMode)
+	if err != nil {
+		t.Fatalf("resolveWorkingDir(PhysicalMode) error: %v", err)
 	}
 	if logical == "" || physical == "" {
 		t.Error("working directory should not be empty")
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Unit tests: Option Parsing & Execution Runner
+// ---------------------------------------------------------------------------
+
 func TestUnit_ParseArgs(t *testing.T) {
 	// Default mode is Logical
-	res, err := parseArgs([]string{})
-	if err != nil || res.Mode != LogicalMode || res.Action != ActionRun {
-		t.Errorf("parseArgs([]) = %+v, %v; want LogicalMode, ActionRun", res, err)
+	opts, err := parseArgs([]string{})
+	if err != nil || opts.Mode != LogicalMode || opts.Action != ActionRun {
+		t.Errorf("parseArgs([]) = %+v, %v; want LogicalMode, ActionRun", opts, err)
 	}
 
 	// -L flag
-	res, err = parseArgs([]string{"-L"})
-	if err != nil || res.Mode != LogicalMode {
-		t.Errorf("parseArgs(-L) = %+v, %v; want LogicalMode", res, err)
+	opts, err = parseArgs([]string{"-L"})
+	if err != nil || opts.Mode != LogicalMode {
+		t.Errorf("parseArgs(-L) = %+v, %v; want LogicalMode", opts, err)
 	}
 
 	// -P flag
-	res, err = parseArgs([]string{"-P"})
-	if err != nil || res.Mode != PhysicalMode {
-		t.Errorf("parseArgs(-P) = %+v, %v; want PhysicalMode", res, err)
+	opts, err = parseArgs([]string{"-P"})
+	if err != nil || opts.Mode != PhysicalMode {
+		t.Errorf("parseArgs(-P) = %+v, %v; want PhysicalMode", opts, err)
 	}
 
 	// Long flags
-	res, err = parseArgs([]string{"--physical"})
-	if err != nil || res.Mode != PhysicalMode {
-		t.Errorf("parseArgs(--physical) = %+v, %v; want PhysicalMode", res, err)
+	opts, err = parseArgs([]string{"--physical"})
+	if err != nil || opts.Mode != PhysicalMode {
+		t.Errorf("parseArgs(--physical) = %+v, %v; want PhysicalMode", opts, err)
 	}
 
-	res, err = parseArgs([]string{"--logical"})
-	if err != nil || res.Mode != LogicalMode {
-		t.Errorf("parseArgs(--logical) = %+v, %v; want LogicalMode", res, err)
+	opts, err = parseArgs([]string{"--logical"})
+	if err != nil || opts.Mode != LogicalMode {
+		t.Errorf("parseArgs(--logical) = %+v, %v; want LogicalMode", opts, err)
 	}
 
 	// Precedence: -L then -P -> Physical
-	res, err = parseArgs([]string{"-L", "-P"})
-	if err != nil || res.Mode != PhysicalMode {
-		t.Errorf("parseArgs(-L, -P) = %+v, %v; want PhysicalMode", res, err)
+	opts, err = parseArgs([]string{"-L", "-P"})
+	if err != nil || opts.Mode != PhysicalMode {
+		t.Errorf("parseArgs(-L, -P) = %+v, %v; want PhysicalMode", opts, err)
 	}
 
 	// Precedence: -P then -L -> Logical
-	res, err = parseArgs([]string{"-P", "-L"})
-	if err != nil || res.Mode != LogicalMode {
-		t.Errorf("parseArgs(-P, -L) = %+v, %v; want LogicalMode", res, err)
+	opts, err = parseArgs([]string{"-P", "-L"})
+	if err != nil || opts.Mode != LogicalMode {
+		t.Errorf("parseArgs(-P, -L) = %+v, %v; want LogicalMode", opts, err)
 	}
 
 	// Bundled: -LP -> Physical
-	res, err = parseArgs([]string{"-LP"})
-	if err != nil || res.Mode != PhysicalMode {
-		t.Errorf("parseArgs(-LP) = %+v, %v; want PhysicalMode", res, err)
+	opts, err = parseArgs([]string{"-LP"})
+	if err != nil || opts.Mode != PhysicalMode {
+		t.Errorf("parseArgs(-LP) = %+v, %v; want PhysicalMode", opts, err)
 	}
 
 	// Bundled: -PL -> Logical
-	res, err = parseArgs([]string{"-PL"})
-	if err != nil || res.Mode != LogicalMode {
-		t.Errorf("parseArgs(-PL) = %+v, %v; want LogicalMode", res, err)
+	opts, err = parseArgs([]string{"-PL"})
+	if err != nil || opts.Mode != LogicalMode {
+		t.Errorf("parseArgs(-PL) = %+v, %v; want LogicalMode", opts, err)
 	}
 
 	// Help and version
-	res, err = parseArgs([]string{"-h"})
-	if err != nil || res.Action != ActionHelp {
-		t.Errorf("parseArgs(-h) = %+v, %v; want ActionHelp", res, err)
+	opts, err = parseArgs([]string{"-h"})
+	if err != nil || opts.Action != ActionHelp {
+		t.Errorf("parseArgs(-h) = %+v, %v; want ActionHelp", opts, err)
 	}
 
-	res, err = parseArgs([]string{"--version"})
-	if err != nil || res.Action != ActionVersion {
-		t.Errorf("parseArgs(--version) = %+v, %v; want ActionVersion", res, err)
+	opts, err = parseArgs([]string{"--version"})
+	if err != nil || opts.Action != ActionVersion {
+		t.Errorf("parseArgs(--version) = %+v, %v; want ActionVersion", opts, err)
 	}
 
 	// Double-dash terminates options
-	res, err = parseArgs([]string{"--", "-P"})
-	if err != nil || res.Mode != LogicalMode {
-		t.Errorf("parseArgs(--, -P) = %+v, %v; want LogicalMode (default)", res, err)
+	opts, err = parseArgs([]string{"--", "-P"})
+	if err != nil || opts.Mode != LogicalMode {
+		t.Errorf("parseArgs(--, -P) = %+v, %v; want LogicalMode (default)", opts, err)
 	}
 
-	// Invalid flag
+	// Invalid short flag
 	_, err = parseArgs([]string{"-x"})
-	if err == nil {
-		t.Error("expected error for unknown flag -x")
+	if err == nil || !strings.Contains(err.Error(), "invalid option -- 'x'") {
+		t.Errorf("expected 'invalid option -- 'x'', got %v", err)
+	}
+
+	// Unrecognized long option
+	_, err = parseArgs([]string{"--invalid-flag"})
+	if err == nil || !strings.Contains(err.Error(), "unrecognized option '--invalid-flag'") {
+		t.Errorf("expected 'unrecognized option '--invalid-flag'', got %v", err)
+	}
+}
+
+func TestUnit_Run(t *testing.T) {
+	// Test Help
+	var outHelp, errHelp bytes.Buffer
+	code := run([]string{"-h"}, &outHelp, &errHelp)
+	if code != 0 || !strings.Contains(outHelp.String(), "Usage:") || errHelp.Len() > 0 {
+		t.Errorf("run(-h) code=%d, stdout=%q, stderr=%q", code, outHelp.String(), errHelp.String())
+	}
+
+	// Test Version
+	var outVer, errVer bytes.Buffer
+	code = run([]string{"--version"}, &outVer, &errVer)
+	if code != 0 || outVer.String() != "pwd (coreutils-go) 0.1.0\n" || errVer.Len() > 0 {
+		t.Errorf("run(--version) code=%d, stdout=%q, stderr=%q", code, outVer.String(), errVer.String())
+	}
+
+	// Test Invalid Option
+	var outInv, errInv bytes.Buffer
+	code = run([]string{"--not-a-flag"}, &outInv, &errInv)
+	if code != 1 || !strings.Contains(errInv.String(), "unrecognized option '--not-a-flag'") {
+		t.Errorf("run(--not-a-flag) code=%d, stderr=%q", code, errInv.String())
+	}
+
+	// Test Success Run
+	var outRun, errRun bytes.Buffer
+	code = run([]string{}, &outRun, &errRun)
+	if code != 0 || outRun.Len() == 0 || errRun.Len() > 0 {
+		t.Errorf("run() code=%d, stdout=%q, stderr=%q", code, outRun.String(), errRun.String())
+	}
+}
+
+func TestUnit_IsBrokenPipe(t *testing.T) {
+	if isBrokenPipe(nil) {
+		t.Error("nil should not be broken pipe")
+	}
+	if !isBrokenPipe(fmt.Errorf("write: broken pipe")) {
+		t.Error("expected broken pipe to be detected")
 	}
 }
 
