@@ -520,8 +520,6 @@ func TestEcho_HelpFlag(t *testing.T) {
 	}
 }
 
-
-
 func TestUnit_PrintHelp(t *testing.T) {
 	help := printHelp()
 	expectedSubstrings := []string{
@@ -618,4 +616,3 @@ func TestUnit_Transformers(t *testing.T) {
 		t.Errorf("EscapeTransformer with \\c failed: got (%q, %v)", out, halt)
 	}
 }
-
