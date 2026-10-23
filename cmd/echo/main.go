@@ -32,9 +32,10 @@ func resolveEscapeFlag(cmd *cobra.Command, rawArgs []string) bool {
 				lastEscape = false
 			} else if strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") && len(arg) > 1 {
 				for _, r := range arg[1:] {
-					if r == 'e' {
+					switch r {
+					case 'e':
 						lastEscape = true
-					} else if r == 'E' {
+					case 'E':
 						lastEscape = false
 					}
 				}
@@ -44,6 +45,59 @@ func resolveEscapeFlag(cmd *cobra.Command, rawArgs []string) bool {
 	}
 
 	return false
+}
+
+type EchoOptions struct {
+	NoNewline    bool
+	EnableEscape bool
+}
+
+type ArgTransformer func(string) (output string, halt bool)
+
+func IdentityTransformer(s string) (string, bool) {
+	return s, false
+}
+
+func EscapeTransformer(s string) (string, bool) {
+	return unescape.Unescape(s)
+}
+
+func FormatEcho(args []string, opts EchoOptions) string {
+	transform := IdentityTransformer
+	if opts.EnableEscape {
+		transform = EscapeTransformer
+	}
+
+	var b strings.Builder
+	halt := false
+
+	for i, arg := range args {
+		if i > 0 {
+			b.WriteByte(' ')
+		}
+
+		var text string
+		text, halt = transform(arg)
+		b.WriteString(text)
+
+		if halt {
+			break
+		}
+	}
+
+	if !opts.NoNewline && !halt {
+		b.WriteByte('\n')
+	}
+
+	return b.String()
+}
+
+func resolveOptions(cmd *cobra.Command, rawArgs []string) EchoOptions {
+	noNewline, _ := cmd.Flags().GetBool("newline")
+	return EchoOptions{
+		NoNewline:    noNewline,
+		EnableEscape: resolveEscapeFlag(cmd, rawArgs),
+	}
 }
 
 var echoCmd = &cobra.Command{
@@ -56,39 +110,12 @@ var echoCmd = &cobra.Command{
 			return
 		}
 
-		enableEscape := resolveEscapeFlag(cmd, os.Args[1:])
-		newline, _ := cmd.Flags().GetBool("newline")
+		opts := resolveOptions(cmd, os.Args[1:])
+		output := FormatEcho(args, opts)
 
 		writer := bufio.NewWriter(cmd.OutOrStdout())
 		defer writer.Flush()
-
-		halt := false
-		for i, arg := range args {
-			if i > 0 {
-				if err := writer.WriteByte(' '); err != nil {
-					return
-				}
-			}
-
-			if enableEscape {
-				var out string
-				out, halt = unescape.Unescape(arg)
-				if _, err := writer.WriteString(out); err != nil {
-					return
-				}
-				if halt {
-					break
-				}
-			} else {
-				if _, err := writer.WriteString(arg); err != nil {
-					return
-				}
-			}
-		}
-
-		if !newline && !halt {
-			_ = writer.WriteByte('\n')
-		}
+		_, _ = writer.WriteString(output)
 	},
 }
 

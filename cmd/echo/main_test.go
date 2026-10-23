@@ -552,3 +552,70 @@ func TestUnit_PrintVersion(t *testing.T) {
 		t.Errorf("expected 'version 0.1.0\\n', got %q", out)
 	}
 }
+
+func TestUnit_FormatEcho(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		opts EchoOptions
+		want string
+	}{
+		{
+			name: "basic words with newline",
+			args: []string{"hello", "world"},
+			opts: EchoOptions{NoNewline: false, EnableEscape: false},
+			want: "hello world\n",
+		},
+		{
+			name: "no newline flag",
+			args: []string{"foo", "bar"},
+			opts: EchoOptions{NoNewline: true, EnableEscape: false},
+			want: "foo bar",
+		},
+		{
+			name: "escape interpretation",
+			args: []string{"a\\nb", "c\\td"},
+			opts: EchoOptions{NoNewline: false, EnableEscape: true},
+			want: "a\nb c\td\n",
+		},
+		{
+			name: "escape cancel output with \\c",
+			args: []string{"hello\\cworld", "ignored"},
+			opts: EchoOptions{NoNewline: false, EnableEscape: true},
+			want: "hello",
+		},
+		{
+			name: "empty args",
+			args: []string{},
+			opts: EchoOptions{NoNewline: false, EnableEscape: false},
+			want: "\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := FormatEcho(tt.args, tt.opts)
+			if got != tt.want {
+				t.Errorf("FormatEcho(%v, %+v) = %q, want %q", tt.args, tt.opts, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestUnit_Transformers(t *testing.T) {
+	out, halt := IdentityTransformer("hello\\nworld")
+	if out != "hello\\nworld" || halt {
+		t.Errorf("IdentityTransformer failed: got (%q, %v)", out, halt)
+	}
+
+	out, halt = EscapeTransformer("hello\\nworld")
+	if out != "hello\nworld" || halt {
+		t.Errorf("EscapeTransformer failed: got (%q, %v)", out, halt)
+	}
+
+	out, halt = EscapeTransformer("stop\\chere")
+	if out != "stop" || !halt {
+		t.Errorf("EscapeTransformer with \\c failed: got (%q, %v)", out, halt)
+	}
+}
+
