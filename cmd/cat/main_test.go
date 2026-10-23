@@ -274,9 +274,6 @@ func TestUnit_ParseOptions(t *testing.T) {
 	}
 }
 
-
-
-
 // ---------------------------------------------------------------------------
 // --help / --version
 // ---------------------------------------------------------------------------
@@ -399,7 +396,7 @@ func TestE2E_CRLFPreserved(t *testing.T) {
 func TestE2E_LargeFile(t *testing.T) {
 	// Larger than the internal 64 KB buffer and not a multiple of it.
 	line := strings.Repeat("0123456789abcdef", 4) + "\n" // 65 bytes
-	content := strings.Repeat(line, 5000)               // ~325 KB
+	content := strings.Repeat(line, 5000)                // ~325 KB
 	f := writeFile(t, "large.txt", content)
 	stdout, _, code := runCat(t, f)
 	if code != 0 || stdout != content {
