@@ -27,6 +27,7 @@ A modern, fast, cross-platform rewrite of the classic **GNU Coreutils** in pure 
 | :--- | :--- | :---: | :--- |
 | [`echo`](cmd/echo) | Write arguments to standard output | ✅ Stable | [README](cmd/echo/README.md) |
 | [`cat`](cmd/cat) | Concatenate files and print on standard output | ✅ Stable | [README](cmd/cat/README.md) |
+| [`pwd`](cmd/pwd) | Print name of current/working directory | ✅ Stable | [README](cmd/pwd/README.md) |
 | [`yes`](cmd/yes) | Output a string repeatedly until killed | ✅ Stable | [README](cmd/yes/README.md) |
 | [`true`](cmd/true) | Return a successful exit status (0) | ✅ Stable | [README](cmd/true/README.md) |
 | [`false`](cmd/false) | Return an unsuccessful exit status (1) | ✅ Stable | [README](cmd/false/README.md) |
@@ -34,7 +35,6 @@ A modern, fast, cross-platform rewrite of the classic **GNU Coreutils** in pure 
 | `head` | Output the first part of files | ⏳ Planned | — |
 | `tail` | Output the last part of files | ⏳ Planned | — |
 | `touch` | Change file access and modification times | ⏳ Planned | — |
-| `pwd` | Print name of current/working directory | ⏳ Planned | — |
 
 ---
 
@@ -48,6 +48,7 @@ Install utilities directly using Go:
 # Install specific utilities
 go install github.com/LCmaster/coreutils-go/cmd/echo@latest
 go install github.com/LCmaster/coreutils-go/cmd/cat@latest
+go install github.com/LCmaster/coreutils-go/cmd/pwd@latest
 go install github.com/LCmaster/coreutils-go/cmd/yes@latest
 go install github.com/LCmaster/coreutils-go/cmd/true@latest
 go install github.com/LCmaster/coreutils-go/cmd/false@latest
@@ -121,6 +122,20 @@ $ cat -A file.txt
 ```
 
 See [cmd/cat/README.md](cmd/cat/README.md) for full details.
+
+### `pwd`
+
+```sh
+# Print current working directory (logical by default)
+$ pwd
+/home/user/workspace
+
+# Print physical directory resolving all symlinks
+$ pwd -P
+/actual/storage/mount/workspace
+```
+
+See [cmd/pwd/README.md](cmd/pwd/README.md) for full details.
 
 ### `yes`
 
@@ -196,6 +211,10 @@ coreutils-go/
 │   │   ├── main.go        # false command entry point
 │   │   ├── main_test.go   # Complete test suite
 │   │   └── README.md      # false manual & usage guide
+│   ├── pwd/               # pwd command CLI implementation
+│   │   ├── main.go        # Logical & physical path resolution and flag precedence
+│   │   ├── main_test.go   # Comprehensive integration & unit tests
+│   │   └── README.md      # pwd manual & usage guide
 │   ├── true/              # true command CLI implementation
 │   │   ├── main.go        # true command entry point
 │   │   ├── main_test.go   # Complete test suite
