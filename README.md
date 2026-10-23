@@ -26,7 +26,7 @@ A modern, fast, cross-platform rewrite of the classic **GNU Coreutils** in pure 
 | Utility | Description | Status | Documentation |
 | :--- | :--- | :---: | :--- |
 | [`echo`](cmd/echo) | Write arguments to standard output | ✅ Stable | [README](cmd/echo/README.md) |
-| `cat` | Concatenate files and print on standard output | ⏳ Planned | — |
+| [`cat`](cmd/cat) | Concatenate files and print on standard output | ✅ Stable | [README](cmd/cat/README.md) |
 | [`yes`](cmd/yes) | Output a string repeatedly until killed | ✅ Stable | [README](cmd/yes/README.md) |
 | [`true`](cmd/true) | Return a successful exit status (0) | ✅ Stable | [README](cmd/true/README.md) |
 | [`false`](cmd/false) | Return an unsuccessful exit status (1) | ✅ Stable | [README](cmd/false/README.md) |
@@ -47,6 +47,7 @@ Install utilities directly using Go:
 ```sh
 # Install specific utilities
 go install github.com/LCmaster/coreutils-go/cmd/echo@latest
+go install github.com/LCmaster/coreutils-go/cmd/cat@latest
 go install github.com/LCmaster/coreutils-go/cmd/yes@latest
 go install github.com/LCmaster/coreutils-go/cmd/true@latest
 go install github.com/LCmaster/coreutils-go/cmd/false@latest
@@ -91,6 +92,35 @@ First part$
 ```
 
 See [cmd/echo/README.md](cmd/echo/README.md) for full details.
+
+### `cat`
+
+```sh
+# Concatenate files to standard output
+$ cat file1.txt file2.txt
+
+# Read from standard input
+$ cat -
+
+# Number all output lines
+$ cat -n file.txt
+     1	First line
+     2	Second line
+
+# Number non-empty lines only
+$ cat -b file.txt
+
+# Squeeze repeated empty lines
+$ cat -s file.txt
+
+# Display $ at end of each line and display tabs as ^I
+$ cat -ET file.txt
+
+# Show all non-printing characters
+$ cat -A file.txt
+```
+
+See [cmd/cat/README.md](cmd/cat/README.md) for full details.
 
 ### `yes`
 
@@ -152,6 +182,10 @@ See [cmd/false/README.md](cmd/false/README.md) for full details.
 ```text
 coreutils-go/
 ├── cmd/
+│   ├── cat/               # cat command CLI implementation
+│   │   ├── main.go        # Cobra CLI definitions & stream formatting
+│   │   ├── main_test.go   # Complete integration & unit test suite
+│   │   └── README.md      # cat manual & usage guide
 │   ├── echo/              # echo command CLI implementation
 │   │   ├── main.go        # Cobra CLI definitions & stream writing
 │   │   ├── main_test.go   # Comprehensive integration & unit tests
