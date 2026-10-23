@@ -3,49 +3,20 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
 	"github.com/LCmaster/coreutils-go/pkg/unescape"
-	"github.com/spf13/cobra"
 )
 
-func resolveEscapeFlag(cmd *cobra.Command, rawArgs []string) bool {
-	enableFlag := cmd.Flags().Lookup("enable-escape")
-	disableFlag := cmd.Flags().Lookup("disable-escape")
+type CLIAction int
 
-	enableChanged := enableFlag != nil && enableFlag.Changed
-	disableChanged := disableFlag != nil && disableFlag.Changed
-
-	if enableChanged && !disableChanged {
-		return true
-	}
-	if !enableChanged && disableChanged {
-		return false
-	}
-	if enableChanged && disableChanged {
-		lastEscape := false
-		for _, arg := range rawArgs {
-			if arg == "--enable-escape" {
-				lastEscape = true
-			} else if arg == "--disable-escape" {
-				lastEscape = false
-			} else if strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") && len(arg) > 1 {
-				for _, r := range arg[1:] {
-					switch r {
-					case 'e':
-						lastEscape = true
-					case 'E':
-						lastEscape = false
-					}
-				}
-			}
-		}
-		return lastEscape
-	}
-
-	return false
-}
+const (
+	ActionRun CLIAction = iota
+	ActionHelp
+	ActionVersion
+)
 
 type EchoOptions struct {
 	NoNewline    bool
@@ -92,31 +63,52 @@ func FormatEcho(args []string, opts EchoOptions) string {
 	return b.String()
 }
 
-func resolveOptions(cmd *cobra.Command, rawArgs []string) EchoOptions {
-	noNewline, _ := cmd.Flags().GetBool("newline")
-	return EchoOptions{
-		NoNewline:    noNewline,
-		EnableEscape: resolveEscapeFlag(cmd, rawArgs),
+func isEchoFlagGroup(arg string) bool {
+	if len(arg) < 2 || arg[0] != '-' {
+		return false
 	}
+	for _, ch := range arg[1:] {
+		if ch != 'n' && ch != 'e' && ch != 'E' {
+			return false
+		}
+	}
+	return true
 }
 
-var echoCmd = &cobra.Command{
-	Use:   "echo [flags]… [strings]…",
-	Short: "Echo the string(s) to standard output.",
-	Run: func(cmd *cobra.Command, args []string) {
-		showVersion, err := cmd.Flags().GetBool("version")
-		if err == nil && showVersion {
-			printVersion()
-			return
+func parseArgs(rawArgs []string) (EchoOptions, []string, CLIAction) {
+	var opts EchoOptions
+	i := 0
+
+	for i < len(rawArgs) {
+		arg := rawArgs[i]
+
+		if i == 0 {
+			switch arg {
+			case "-h", "--help":
+				return opts, nil, ActionHelp
+			case "-v", "--version":
+				return opts, nil, ActionVersion
+			}
 		}
 
-		opts := resolveOptions(cmd, os.Args[1:])
-		output := FormatEcho(args, opts)
+		if !isEchoFlagGroup(arg) {
+			break
+		}
 
-		writer := bufio.NewWriter(cmd.OutOrStdout())
-		defer writer.Flush()
-		_, _ = writer.WriteString(output)
-	},
+		for _, ch := range arg[1:] {
+			switch ch {
+			case 'n':
+				opts.NoNewline = true
+			case 'e':
+				opts.EnableEscape = true
+			case 'E':
+				opts.EnableEscape = false
+			}
+		}
+		i++
+	}
+
+	return opts, rawArgs[i:], ActionRun
 }
 
 func printHelp() string {
@@ -149,23 +141,26 @@ func printHelp() string {
 	return helpMessage
 }
 
-func printVersion() {
-	fmt.Println("version 0.1.0")
+func printVersion(w io.Writer) {
+	fmt.Fprintln(w, "echo (coreutils-go) 0.1.0")
 }
 
-func init() {
-	echoCmd.Flags().BoolS("newline", "n", false, "do not output the trailing newline")
-	echoCmd.Flags().BoolS("disable-escape", "E", true, "disable interpretation of backslash escapes (default)")
-	echoCmd.Flags().BoolS("enable-escape", "e", false, "enable interpretation of backslash escapes")
-	echoCmd.Flags().BoolP("version", "v", false, "output version information and exit")
-	echoCmd.Flags().BoolP("help", "h", false, "display this help and exit")
+func run(args []string, stdout io.Writer) int {
+	opts, stringArgs, action := parseArgs(args)
 
-	echoCmd.SetUsageTemplate(printHelp())
+	switch action {
+	case ActionVersion:
+		printVersion(stdout)
+	case ActionHelp:
+		fmt.Fprint(stdout, printHelp())
+	case ActionRun:
+		writer := bufio.NewWriter(stdout)
+		defer writer.Flush()
+		writer.WriteString(FormatEcho(stringArgs, opts))
+	}
+	return 0
 }
 
 func main() {
-	if err := echoCmd.Execute(); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
+	os.Exit(run(os.Args[1:], os.Stdout))
 }

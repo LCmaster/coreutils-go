@@ -485,8 +485,8 @@ func TestEcho_VersionFlag(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v, stderr: %q", err, stderr)
 			}
-			if !strings.Contains(stdout, "version 0.1.0") {
-				t.Errorf("expected version output to contain 'version 0.1.0', got %q", stdout)
+			if !strings.Contains(stdout, "echo (coreutils-go) 0.1.0") {
+				t.Errorf("expected version output to contain 'echo (coreutils-go) 0.1.0', got %q", stdout)
 			}
 			if !strings.HasSuffix(stdout, "\n") {
 				t.Errorf("expected version output to end with newline, got %q", stdout)
@@ -540,14 +540,10 @@ func TestUnit_PrintHelp(t *testing.T) {
 }
 
 func TestUnit_PrintVersion(t *testing.T) {
-	out, err := captureStdout(func() {
-		printVersion()
-	})
-	if err != nil {
-		t.Fatalf("captureStdout error: %v", err)
-	}
-	if out != "version 0.1.0\n" {
-		t.Errorf("expected 'version 0.1.0\\n', got %q", out)
+	var buf bytes.Buffer
+	printVersion(&buf)
+	if buf.String() != "echo (coreutils-go) 0.1.0\n" {
+		t.Errorf("expected 'echo (coreutils-go) 0.1.0\\n', got %q", buf.String())
 	}
 }
 
