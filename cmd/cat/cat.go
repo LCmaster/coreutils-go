@@ -109,17 +109,17 @@ func processStream(w *bufio.Writer, r io.Reader, opts Options, state *StreamStat
 		}
 
 		if opts.SqueezeBlank {
-			if state.PrevBlank && isBlank(line) {
+			if state.PrevBlank && isEmptyLine(line) {
 				if err == io.EOF {
 					break
 				}
 				continue
 			}
-			state.PrevBlank = isBlank(line)
+			state.PrevBlank = isEmptyLine(line)
 		}
 
 		if opts.NumberNonBlank {
-			if isBlank(line) {
+			if isEmptyLine(line) {
 				if _, writeErr := w.Write(line); writeErr != nil {
 					return writeErr
 				}

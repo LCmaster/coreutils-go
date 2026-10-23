@@ -2,10 +2,8 @@ package main
 
 import "bytes"
 
-// LineTransformer represents a transformation on a single line of bytes.
 type LineTransformer func([]byte) []byte
 
-// Pipe composes multiple LineTransformers into a single pipeline.
 func Pipe(transformers ...LineTransformer) LineTransformer {
 	return func(line []byte) []byte {
 		for _, transform := range transformers {
@@ -15,7 +13,6 @@ func Pipe(transformers ...LineTransformer) LineTransformer {
 	}
 }
 
-// newFormatPipeline constructs the composed transformer based on enabled options.
 func newFormatPipeline(opts Options) LineTransformer {
 	var stages []LineTransformer
 	if opts.ShowNonPrinting {
@@ -64,6 +61,6 @@ func formatNonPrinting(line []byte) []byte {
 	return result
 }
 
-func isBlank(line []byte) bool {
+func isEmptyLine(line []byte) bool {
 	return len(line) == 0 || (len(line) == 1 && line[0] == '\n') || (len(line) == 2 && line[0] == '\r' && line[1] == '\n')
 }
