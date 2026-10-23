@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/spf13/cobra"
 )
 
 var binaryPath string
@@ -106,18 +108,20 @@ func captureStdout(f func() error) (string, error) {
 func TestUnit_PrintHelp(t *testing.T) {
 	help := printHelp()
 	for _, snippet := range []string{
-		"Usage: cat [OPTION]... [FILE]...",
+		"Usage:",
+		"cat [OPTION]... [FILE]...",
+		"Description:",
 		"Concatenate FILE(s) to standard output.",
 		"With no FILE, or when FILE is -, read standard input.",
 		"-A, --show-all",
 		"-b, --number-nonblank",
-		"-e ",
+		"-e",
 		"-E, --show-ends",
 		"-n, --number",
 		"-s, --squeeze-blank",
-		"-t ",
+		"-t",
 		"-T, --show-tabs",
-		"-u ",
+		"-u",
 		"-v, --show-nonprinting",
 		"--help",
 		"--version",
@@ -178,7 +182,7 @@ func TestUnit_ProcessStream(t *testing.T) {
 		Number:   true,
 		ShowEnds: true,
 	}
-	pipeline := buildFormatPipeline(opts)
+	pipeline := newFormatPipeline(opts)
 	state := StreamState{LineNumber: 1}
 
 	input := strings.NewReader("line1\nline2\n")
@@ -239,6 +243,37 @@ func TestUnit_IsSameAsOutput(t *testing.T) {
 		t.Error("different files should not be detected as same output")
 	}
 }
+
+func TestUnit_ParseOptions(t *testing.T) {
+	cmd := &cobra.Command{}
+	f := cmd.Flags()
+	f.BoolP("show-all", "A", false, "")
+	f.BoolP("number-nonblank", "b", false, "")
+	f.BoolS("e", "e", false, "")
+	f.BoolP("show-ends", "E", false, "")
+	f.BoolP("number", "n", false, "")
+	f.BoolP("squeeze-blank", "s", false, "")
+	f.BoolS("t", "t", false, "")
+	f.BoolP("show-tabs", "T", false, "")
+	f.BoolS("unbuffered", "u", false, "")
+	f.BoolP("show-nonprinting", "v", false, "")
+
+	if err := cmd.ParseFlags([]string{"-b", "-n", "-A"}); err != nil {
+		t.Fatal(err)
+	}
+
+	opts := parseOptions(cmd)
+	if !opts.NumberNonBlank {
+		t.Error("expected NumberNonBlank to be true")
+	}
+	if opts.Number {
+		t.Error("expected Number to be false when NumberNonBlank is set (-b overrides -n)")
+	}
+	if !opts.ShowNonPrinting || !opts.ShowEnds || !opts.ShowTabs {
+		t.Error("expected ShowNonPrinting, ShowEnds, and ShowTabs to be true for -A")
+	}
+}
+
 
 
 

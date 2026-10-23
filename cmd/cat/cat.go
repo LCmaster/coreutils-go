@@ -32,7 +32,7 @@ type StreamState struct {
 	PrevBlank  bool
 }
 
-func runCatCmd(out io.Writer, r io.Reader) error {
+func copyStream(out io.Writer, r io.Reader) error {
 	_, err := io.Copy(out, r)
 	return err
 }
@@ -94,7 +94,7 @@ func processFile(filename string, stdin io.Reader, stdout io.Writer, opts Option
 		_ = w.Flush()
 		out = stdout
 	}
-	return runCatCmd(out, r)
+	return copyStream(out, r)
 }
 
 func processStream(w *bufio.Writer, r io.Reader, opts Options, state *StreamState, transform LineTransformer) error {

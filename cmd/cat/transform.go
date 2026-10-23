@@ -15,23 +15,16 @@ func Pipe(transformers ...LineTransformer) LineTransformer {
 	}
 }
 
-// buildFormatPipeline constructs the composed transformer based on enabled options.
-func buildFormatPipeline(opts ...Options) LineTransformer {
-	var opt Options
-	if len(opts) > 0 {
-		opt = opts[0]
-	} else {
-		opt, _ = parseOptions()
-	}
-
+// newFormatPipeline constructs the composed transformer based on enabled options.
+func newFormatPipeline(opts Options) LineTransformer {
 	var stages []LineTransformer
-	if opt.ShowNonPrinting {
+	if opts.ShowNonPrinting {
 		stages = append(stages, formatNonPrinting)
 	}
-	if opt.ShowTabs {
+	if opts.ShowTabs {
 		stages = append(stages, formatTabs)
 	}
-	if opt.ShowEnds {
+	if opts.ShowEnds {
 		stages = append(stages, formatEnds)
 	}
 	if len(stages) == 0 {

@@ -10,49 +10,29 @@ import (
 	"github.com/spf13/pflag"
 )
 
-var (
-	showAllFlag                    bool
-	numberNonBlankFlag             bool
-	showNonPrintingAndShowEndsFlag bool
-	showEndsFlag                   bool
-	numberFlag                     bool
-	squeezeBlankFlag               bool
-	showNonPrintingAndShowTabsFlag bool
-	showTabsFlag                   bool
-	posixCompatFlag                bool
-	showNonPrintingFlag            bool
-)
+func parseOptions(cmd *cobra.Command) Options {
+	f := cmd.Flags()
 
-func parseOptions() (Options, bool) {
-	opts := Options{
-		NumberNonBlank:  numberNonBlankFlag,
-		ShowEnds:        showEndsFlag,
-		Number:          numberFlag,
-		SqueezeBlank:    squeezeBlankFlag,
-		ShowTabs:        showTabsFlag,
-		ShowNonPrinting: showNonPrintingFlag,
-		Unbuffered:      posixCompatFlag,
-	}
-	if showAllFlag {
-		opts.ShowNonPrinting = true
-		opts.ShowEnds = true
-		opts.ShowTabs = true
-	}
-	if showNonPrintingAndShowEndsFlag {
-		opts.ShowNonPrinting = true
-		opts.ShowEnds = true
-	}
-	if showNonPrintingAndShowTabsFlag {
-		opts.ShowNonPrinting = true
-		opts.ShowTabs = true
-	}
+	showAll, _ := f.GetBool("show-all")
+	showNonPrinting, _ := f.GetBool("show-nonprinting")
+	showEnds, _ := f.GetBool("show-ends")
+	showTabs, _ := f.GetBool("show-tabs")
+	numberNonBlank, _ := f.GetBool("number-nonblank")
+	number, _ := f.GetBool("number")
+	squeezeBlank, _ := f.GetBool("squeeze-blank")
+	unbuffered, _ := f.GetBool("unbuffered")
+	eFlag, _ := f.GetBool("e")
+	tFlag, _ := f.GetBool("t")
 
-	return opts, opts.NeedsFormatting()
-}
-
-func processSuperFlags() bool {
-	_, useFlags := parseOptions()
-	return useFlags
+	return Options{
+		NumberNonBlank:  numberNonBlank,
+		Number:          number && !numberNonBlank,
+		SqueezeBlank:    squeezeBlank,
+		ShowEnds:        showEnds || showAll || eFlag,
+		ShowTabs:        showTabs || showAll || tFlag,
+		ShowNonPrinting: showNonPrinting || showAll || eFlag || tFlag,
+		Unbuffered:      unbuffered,
+	}
 }
 
 var catCmd = &cobra.Command{
@@ -66,8 +46,8 @@ var catCmd = &cobra.Command{
 			return
 		}
 
-		opts, _ := parseOptions()
-		pipeline := buildFormatPipeline(opts)
+		opts := parseOptions(cmd)
+		pipeline := newFormatPipeline(opts)
 		writer := bufio.NewWriterSize(cmd.OutOrStdout(), bufferSize)
 		defer writer.Flush()
 
@@ -99,27 +79,32 @@ var catCmd = &cobra.Command{
 }
 
 func printHelp() string {
-	return "Usage: cat [OPTION]... [FILE]...\n" +
-		"Concatenate FILE(s) to standard output.\n" +
+	helpMessage := "" +
+		"Usage:\n" +
+		"cat [OPTION]... [FILE]...\n" +
 		"\n" +
+		"Description:\n" +
+		"Concatenate FILE(s) to standard output.\n" +
 		"With no FILE, or when FILE is -, read standard input.\n" +
 		"\n" +
-		"  -A, --show-all           equivalent to -vET\n" +
-		"  -b, --number-nonblank    number nonempty output lines, overrides -n\n" +
-		"  -e                       equivalent to -vE\n" +
-		"  -E, --show-ends          display $ at end of each line\n" +
-		"  -n, --number             number all output lines\n" +
-		"  -s, --squeeze-blank      suppress repeated empty output lines\n" +
-		"  -t                       equivalent to -vT\n" +
-		"  -T, --show-tabs          display TAB characters as ^I\n" +
-		"  -u                       (ignored)\n" +
-		"  -v, --show-nonprinting   use ^ and M- notation, except for LFD and TAB\n" +
-		"      --help        display this help and exit\n" +
-		"      --version     output version information and exit\n" +
+		"  -A, --show-all\t\tequivalent to -vET\n" +
+		"  -b, --number-nonblank\t\tnumber nonempty output lines, overrides -n\n" +
+		"  -e\t\t\t\tequivalent to -vE\n" +
+		"  -E, --show-ends\t\tdisplay $ at end of each line\n" +
+		"  -n, --number\t\t\tnumber all output lines\n" +
+		"  -s, --squeeze-blank\t\tsuppress repeated empty output lines\n" +
+		"  -t\t\t\t\tequivalent to -vT\n" +
+		"  -T, --show-tabs\t\tdisplay TAB characters as ^I\n" +
+		"  -u\t\t\t\t(ignored)\n" +
+		"  -v, --show-nonprinting\tuse ^ and M- notation, except for LFD and TAB\n" +
+		"      --help\t\t\tdisplay this help and exit\n" +
+		"      --version\t\t\toutput version information and exit\n" +
 		"\n" +
 		"Examples:\n" +
 		"  cat f - g  Output f's contents, then standard input, then g's contents.\n" +
 		"  cat        Copy standard input to standard output.\n"
+
+	return helpMessage
 }
 
 func printVersion() error {
@@ -132,16 +117,16 @@ func init() {
 	catCmd.SilenceErrors = true
 
 	f := catCmd.Flags()
-	f.BoolVarP(&showAllFlag, "show-all", "A", false, "equivalent to -vET")
-	f.BoolVarP(&numberNonBlankFlag, "number-nonblank", "b", false, "number nonempty output lines, overrides -n")
-	f.BoolVarS(&showNonPrintingAndShowEndsFlag, "vE", "e", false, "equivalent to -vE")
-	f.BoolVarP(&showEndsFlag, "show-ends", "E", false, "display $ at end of each line")
-	f.BoolVarP(&numberFlag, "number", "n", false, "number all output lines")
-	f.BoolVarP(&squeezeBlankFlag, "squeeze-blank", "s", false, "suppress repeated empty output lines")
-	f.BoolVarS(&showNonPrintingAndShowTabsFlag, "vT", "t", false, "equivalent to -vT")
-	f.BoolVarP(&showTabsFlag, "show-tabs", "T", false, "display TAB characters as ^I")
-	f.BoolVarS(&posixCompatFlag, "unbuffered", "u", false, "(ignored)")
-	f.BoolVarP(&showNonPrintingFlag, "show-nonprinting", "v", false, "use ^ and M- notation, except for LFD and TAB")
+	f.BoolP("show-all", "A", false, "equivalent to -vET")
+	f.BoolP("number-nonblank", "b", false, "number nonempty output lines, overrides -n")
+	f.BoolS("e", "e", false, "equivalent to -vE")
+	f.BoolP("show-ends", "E", false, "display $ at end of each line")
+	f.BoolP("number", "n", false, "number all output lines")
+	f.BoolP("squeeze-blank", "s", false, "suppress repeated empty output lines")
+	f.BoolS("t", "t", false, "equivalent to -vT")
+	f.BoolP("show-tabs", "T", false, "display TAB characters as ^I")
+	f.BoolS("unbuffered", "u", false, "(ignored)")
+	f.BoolP("show-nonprinting", "v", false, "use ^ and M- notation, except for LFD and TAB")
 
 	f.Bool("version", false, "output version information and exit")
 	f.Bool("help", false, "display this help and exit")
