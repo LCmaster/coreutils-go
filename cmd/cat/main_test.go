@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -139,6 +141,106 @@ func TestUnit_PrintVersion(t *testing.T) {
 		t.Errorf("printVersion() = %q", out)
 	}
 }
+
+func TestUnit_FormatTabs(t *testing.T) {
+	input := []byte("a\tb\t\n")
+	want := []byte("a^Ib^I\n")
+	got := formatTabs(input)
+	if !bytes.Equal(got, want) {
+		t.Errorf("formatTabs(%q) = %q, want %q", input, got, want)
+	}
+}
+
+func TestUnit_FormatEnds(t *testing.T) {
+	input := []byte("hello\n")
+	want := []byte("hello$\n")
+	got := formatEnds(input)
+	if !bytes.Equal(got, want) {
+		t.Errorf("formatEnds(%q) = %q, want %q", input, got, want)
+	}
+}
+
+func TestUnit_Pipe(t *testing.T) {
+	upper := func(b []byte) []byte {
+		return bytes.ToUpper(b)
+	}
+	pipeline := Pipe(formatTabs, formatEnds, upper)
+	input := []byte("hello\tworld\n")
+	want := []byte("HELLO^IWORLD$\n")
+	got := pipeline(input)
+	if !bytes.Equal(got, want) {
+		t.Errorf("Pipe() = %q, want %q", got, want)
+	}
+}
+
+func TestUnit_ProcessStream(t *testing.T) {
+	opts := Options{
+		Number:   true,
+		ShowEnds: true,
+	}
+	pipeline := buildFormatPipeline(opts)
+	state := StreamState{LineNumber: 1}
+
+	input := strings.NewReader("line1\nline2\n")
+	var buf bytes.Buffer
+	w := bufio.NewWriter(&buf)
+
+	if err := processStream(w, input, opts, &state, pipeline); err != nil {
+		t.Fatalf("processStream error: %v", err)
+	}
+	_ = w.Flush()
+
+	want := "     1\tline1$\n     2\tline2$\n"
+	if got := buf.String(); got != want {
+		t.Errorf("processStream output = %q, want %q", got, want)
+	}
+	if state.LineNumber != 3 {
+		t.Errorf("state.LineNumber = %d, want 3", state.LineNumber)
+	}
+}
+
+func TestUnit_IsBrokenPipe(t *testing.T) {
+	if !isBrokenPipe(syscall.EPIPE) {
+		t.Error("expected syscall.EPIPE to be recognized as broken pipe")
+	}
+	if !isBrokenPipe(fmt.Errorf("write: broken pipe")) {
+		t.Error("expected 'broken pipe' string error to be recognized")
+	}
+	if isBrokenPipe(nil) {
+		t.Error("nil should not be broken pipe")
+	}
+	if isBrokenPipe(fmt.Errorf("file not found")) {
+		t.Error("file not found should not be broken pipe")
+	}
+}
+
+func TestUnit_IsSameAsOutput(t *testing.T) {
+	tmp := writeFile(t, "test_cycle.txt", "content\n")
+	f, err := os.Open(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	// Comparing against itself should be true
+	if !isSameAsOutput(f, f) {
+		t.Error("expected same file to be detected as output cycle")
+	}
+
+	// Comparing against a different file should be false
+	other := writeFile(t, "other.txt", "other\n")
+	fOther, err := os.Open(other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fOther.Close()
+
+	if isSameAsOutput(f, fOther) {
+		t.Error("different files should not be detected as same output")
+	}
+}
+
+
 
 // ---------------------------------------------------------------------------
 // --help / --version

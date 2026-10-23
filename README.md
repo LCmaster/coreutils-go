@@ -183,7 +183,9 @@ See [cmd/false/README.md](cmd/false/README.md) for full details.
 coreutils-go/
 ├── cmd/
 │   ├── cat/               # cat command CLI implementation
-│   │   ├── main.go        # Cobra CLI definitions & stream formatting
+│   │   ├── cat.go         # Core stream/file processing, cycle detection & safety
+│   │   ├── transform.go   # Functional line transformer pipeline & combinators
+│   │   ├── main.go        # Cobra CLI definitions & flag bindings
 │   │   ├── main_test.go   # Complete integration & unit test suite
 │   │   └── README.md      # cat manual & usage guide
 │   ├── echo/              # echo command CLI implementation

@@ -4,9 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"io"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -25,65 +23,36 @@ var (
 	showNonPrintingFlag            bool
 )
 
-const bufferSize = 64 * 1024 // 64 KB memory buffer for optimal I/O throughput
-
-func runCatCmd(out io.Writer, r io.Reader) error {
-	_, err := io.Copy(out, r)
-	return err
-}
-
-func processSuperFlags() {
-	// if -A or --show-all
+func parseOptions() (Options, bool) {
+	opts := Options{
+		NumberNonBlank:  numberNonBlankFlag,
+		ShowEnds:        showEndsFlag,
+		Number:          numberFlag,
+		SqueezeBlank:    squeezeBlankFlag,
+		ShowTabs:        showTabsFlag,
+		ShowNonPrinting: showNonPrintingFlag,
+		Unbuffered:      posixCompatFlag,
+	}
 	if showAllFlag {
-		showNonPrintingFlag = true
-		showEndsFlag = true
-		showTabsFlag = true
+		opts.ShowNonPrinting = true
+		opts.ShowEnds = true
+		opts.ShowTabs = true
 	}
 	if showNonPrintingAndShowEndsFlag {
-		showNonPrintingFlag = true
-		showEndsFlag = true
+		opts.ShowNonPrinting = true
+		opts.ShowEnds = true
 	}
 	if showNonPrintingAndShowTabsFlag {
-		showNonPrintingFlag = true
-		showTabsFlag = true
+		opts.ShowNonPrinting = true
+		opts.ShowTabs = true
 	}
+
+	return opts, opts.NeedsFormatting()
 }
 
-func useFlags() bool {
-	res := numberNonBlankFlag
-	res = res || showEndsFlag
-	res = res || numberFlag
-	res = res || squeezeBlankFlag
-	res = res || showTabsFlag
-	res = res || showNonPrintingFlag
-	return res
-}
-
-func formatNonPrinting(line []byte) []byte {
-	result := make([]byte, 0, len(line))
-	for _, b := range line {
-		switch {
-		case b == '\n' || b == '\t':
-			result = append(result, b)
-		case b < 32:
-			result = append(result, '^', b+64)
-		case b < 127:
-			result = append(result, b)
-		case b == 127:
-			result = append(result, '^', '?')
-		case b < 160:
-			result = append(result, 'M', '-', '^', b-128+64)
-		case b < 255:
-			result = append(result, 'M', '-', b-128)
-		default: // b == 255
-			result = append(result, 'M', '-', '^', '?')
-		}
-	}
-	return result
-}
-
-func isBlank(line []byte) bool {
-	return len(line) == 0 || (len(line) == 1 && line[0] == '\n') || (len(line) == 2 && line[0] == '\r' && line[1] == '\n')
+func processSuperFlags() bool {
+	_, useFlags := parseOptions()
+	return useFlags
 }
 
 var catCmd = &cobra.Command{
@@ -97,102 +66,30 @@ var catCmd = &cobra.Command{
 			return
 		}
 
-		processSuperFlags()
-		writer := bufio.NewWriter(cmd.OutOrStdout())
+		opts, _ := parseOptions()
+		pipeline := buildFormatPipeline(opts)
+		writer := bufio.NewWriterSize(cmd.OutOrStdout(), bufferSize)
 		defer writer.Flush()
-		lineNumber := 1
-		prevBlank := false
-		hasError := false
+
 		if len(args) == 0 {
-			args = append(args, "-")
+			args = []string{"-"}
 		}
+
+		state := StreamState{LineNumber: 1}
+		hasError := false
+
 		for _, filename := range args {
-			var fileToClose *os.File
-			var r io.Reader
-			if filename == "-" {
-				r = cmd.InOrStdin()
-			} else {
-				f, err := os.Open(filename)
-				if err != nil {
-					fmt.Fprintf(cmd.ErrOrStderr(), "cat: %s: %v\n", filename, err)
-					hasError = true
-					continue
+			err := processFile(filename, cmd.InOrStdin(), cmd.OutOrStdout(), opts, &state, pipeline, writer)
+			if err != nil {
+				if isBrokenPipe(err) {
+					break
 				}
-				fileToClose = f
-				r = f
-
-				if stat, err := f.Stat(); err == nil && stat.IsDir() {
-					fmt.Fprintf(cmd.ErrOrStderr(), "cat: %s: Is a directory\n", filename)
-					fileToClose.Close()
-					fileToClose = nil
-					hasError = true
-					continue
-				}
+				fmt.Fprintf(cmd.ErrOrStderr(), "cat: %s: %v\n", filename, err)
+				hasError = true
 			}
-
-			if useFlags() {
-				reader := bufio.NewReader(r)
-				for {
-					line, err := reader.ReadBytes('\n')
-					if err == io.EOF && len(line) == 0 {
-						break
-					}
-					if err != nil && err != io.EOF {
-						fmt.Fprintf(cmd.ErrOrStderr(), "cat: %s: %v\n", filename, err)
-						hasError = true
-						break
-					}
-
-					if squeezeBlankFlag {
-						if prevBlank && isBlank(line) {
-							if err == io.EOF {
-								break
-							}
-							continue
-						}
-						prevBlank = isBlank(line)
-					}
-
-					if numberNonBlankFlag {
-						if isBlank(line) {
-							writer.Write(line)
-							if err == io.EOF {
-								break
-							}
-							continue
-						}
-						fmt.Fprintf(writer, "%6d\t", lineNumber)
-					} else if numberFlag {
-						fmt.Fprintf(writer, "%6d\t", lineNumber)
-					}
-					if showNonPrintingFlag {
-						line = formatNonPrinting(line)
-					}
-					if showTabsFlag {
-						line = []byte(strings.ReplaceAll(string(line), "\t", "^I"))
-					}
-					if showEndsFlag {
-						line = []byte(strings.ReplaceAll(string(line), "\n", "$\n"))
-					}
-
-					writer.Write(line)
-					lineNumber++
-
-					if err == io.EOF {
-						break
-					}
-				}
-			} else {
-				if err := runCatCmd(writer, r); err != nil {
-					fmt.Fprintf(cmd.ErrOrStderr(), "cat: %s: %v\n", filename, err)
-					hasError = true
-				}
+			if err := writer.Flush(); err != nil && isBrokenPipe(err) {
+				break
 			}
-			if fileToClose != nil {
-				fileToClose.Close()
-			}
-			fileToClose = nil
-			writer.Flush()
 		}
 
 		if hasError {
