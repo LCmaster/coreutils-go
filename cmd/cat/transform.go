@@ -17,7 +17,7 @@ func Pipe(transformers ...LineTransformer) LineTransformer {
 	return fn.Pipe(transforms...)
 }
 
-func newFormatPipeline(opts Options) LineTransformer {
+func newFormatPipeline(opts CatOptions) LineTransformer {
 	var stages []LineTransformer
 	if opts.ShowNonPrinting {
 		stages = append(stages, strutils.FormatNonPrinting)

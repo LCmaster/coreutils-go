@@ -87,7 +87,7 @@ func writeFile(t *testing.T, name string, content string) string {
 // ---------------------------------------------------------------------------
 
 func TestUnit_PrintHelp(t *testing.T) {
-	help := getHelpStr()
+	help := newCommand().Help()
 	for _, snippet := range []string{
 		"Usage:",
 		"cat [OPTION]... [FILE]...",
@@ -109,21 +109,20 @@ func TestUnit_PrintHelp(t *testing.T) {
 		"Examples:",
 	} {
 		if !strings.Contains(help, snippet) {
-			t.Errorf("getHelpStr() missing snippet %q", snippet)
+			t.Errorf("cmd.Help() missing snippet %q", snippet)
 		}
 	}
 	if !strings.HasSuffix(help, "\n") {
-		t.Error("getHelpStr() should end with a newline")
+		t.Error("cmd.Help() should end with a newline")
 	}
 }
 
 func TestUnit_PrintVersion(t *testing.T) {
-	ver := getVersionStr()
+	ver := newCommand().Version()
 	if ver != "cat (coreutils-go) 0.1.0" {
-		t.Errorf("getVersionStr() = %q, want %q", ver, "cat (coreutils-go) 0.1.0")
+		t.Errorf("cmd.Version() = %q, want %q", ver, "cat (coreutils-go) 0.1.0")
 	}
 }
-
 
 func TestUnit_FormatTabs(t *testing.T) {
 	input := []byte("a\tb\t\n")
@@ -157,7 +156,7 @@ func TestUnit_Pipe(t *testing.T) {
 }
 
 func TestUnit_ProcessStream(t *testing.T) {
-	opts := Options{
+	opts := CatOptions{
 		Number:   true,
 		ShowEnds: true,
 	}
@@ -223,90 +222,74 @@ func TestUnit_IsSameAsOutput(t *testing.T) {
 	}
 }
 
-func TestUnit_ParseArgs(t *testing.T) {
-	opts, files, action, err := parseArgs([]string{"-b", "-n", "-A", "test.txt"})
+func TestUnit_Flags(t *testing.T) {
+	// Test -b overrides -n
+	var out bytes.Buffer
+	err := newCommand().Execute([]string{"-b", "-n"}, strings.NewReader("line1\n\nline2\n"), &out, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if action != ActionRun {
-		t.Errorf("expected ActionRun, got %v", action)
-	}
-	if len(files) != 1 || files[0] != "test.txt" {
-		t.Errorf("expected files [test.txt], got %v", files)
-	}
-	if !opts.NumberNonBlank {
-		t.Error("expected NumberNonBlank to be true")
-	}
-	if opts.Number {
-		t.Error("expected Number to be false when NumberNonBlank is set (-b overrides -n)")
-	}
-	if !opts.ShowNonPrinting || !opts.ShowEnds || !opts.ShowTabs {
-		t.Error("expected ShowNonPrinting, ShowEnds, and ShowTabs to be true for -A")
+	expected := "     1\tline1\n\n     2\tline2\n"
+	if out.String() != expected {
+		t.Errorf("got %q, want %q", out.String(), expected)
 	}
 
-	// Test -e shorthand
-	optsE, _, _, err := parseArgs([]string{"-e"})
-	if err != nil || !optsE.ShowNonPrinting || !optsE.ShowEnds || optsE.ShowTabs {
-		t.Errorf("expected -e to set ShowNonPrinting and ShowEnds, got %+v", optsE)
+	// Test -e shorthand (ShowNonPrinting and ShowEnds)
+	out.Reset()
+	err = newCommand().Execute([]string{"-e"}, strings.NewReader("hello\n"), &out, io.Discard)
+	if err != nil || out.String() != "hello$\n" {
+		t.Errorf("-e got %q", out.String())
 	}
 
-	// Test -t shorthand
-	optsT, _, _, err := parseArgs([]string{"-t"})
-	if err != nil || !optsT.ShowNonPrinting || optsT.ShowEnds || !optsT.ShowTabs {
-		t.Errorf("expected -t to set ShowNonPrinting and ShowTabs, got %+v", optsT)
+	// Test -t shorthand (ShowNonPrinting and ShowTabs)
+	out.Reset()
+	err = newCommand().Execute([]string{"-t"}, strings.NewReader("a\tb\n"), &out, io.Discard)
+	if err != nil || out.String() != "a^Ib\n" {
+		t.Errorf("-t got %q", out.String())
 	}
 
-	// Test --help and --version
-	_, _, actionHelp, err := parseArgs([]string{"--help"})
-	if err != nil || actionHelp != ActionHelp {
-		t.Errorf("expected ActionHelp, got %v (err=%v)", actionHelp, err)
+	// Test invalid option -h
+	var errBuf bytes.Buffer
+	err = newCommand().Execute([]string{"-h"}, nil, io.Discard, &errBuf)
+	if err == nil || !strings.Contains(errBuf.String(), "invalid option -- 'h'") {
+		t.Errorf("expected invalid option -h, got err=%v, stderr=%q", err, errBuf.String())
 	}
 
-	_, _, actionVer, err := parseArgs([]string{"--version"})
-	if err != nil || actionVer != ActionVersion {
-		t.Errorf("expected ActionVersion, got %v (err=%v)", actionVer, err)
-	}
-
-	// Test invalid option
-	_, _, _, err = parseArgs([]string{"-h"})
-	if err == nil || !strings.Contains(err.Error(), "invalid option -- 'h'") {
-		t.Errorf("expected invalid option -- 'h', got %v", err)
-	}
-
-	// Test unrecognized long option
-	_, _, _, err = parseArgs([]string{"--unknown"})
-	if err == nil || !strings.Contains(err.Error(), "unrecognized option '--unknown'") {
-		t.Errorf("expected unrecognized option '--unknown', got %v", err)
+	// Test unrecognized long option --unknown
+	errBuf.Reset()
+	err = newCommand().Execute([]string{"--unknown"}, nil, io.Discard, &errBuf)
+	if err == nil || !strings.Contains(errBuf.String(), "unrecognized option '--unknown'") {
+		t.Errorf("expected unrecognized option --unknown, got err=%v, stderr=%q", err, errBuf.String())
 	}
 }
 
 func TestUnit_Run(t *testing.T) {
 	// Test Help
 	var outHelp, errHelp bytes.Buffer
-	code := run([]string{"--help"}, nil, &outHelp, &errHelp)
-	if code != 0 || !strings.Contains(outHelp.String(), "Usage:") || errHelp.Len() > 0 {
-		t.Errorf("run(--help) code=%d, stdout=%q, stderr=%q", code, outHelp.String(), errHelp.String())
+	err := newCommand().Execute([]string{"--help"}, nil, &outHelp, &errHelp)
+	if err != nil || !strings.Contains(outHelp.String(), "Usage:") || errHelp.Len() > 0 {
+		t.Errorf("Execute(--help) err=%v, stdout=%q, stderr=%q", err, outHelp.String(), errHelp.String())
 	}
 
 	// Test Version
 	var outVer, errVer bytes.Buffer
-	code = run([]string{"--version"}, nil, &outVer, &errVer)
-	if code != 0 || outVer.String() != "cat (coreutils-go) 0.1.0\n" || errVer.Len() > 0 {
-		t.Errorf("run(--version) code=%d, stdout=%q, stderr=%q", code, outVer.String(), errVer.String())
+	err = newCommand().Execute([]string{"--version"}, nil, &outVer, &errVer)
+	if err != nil || outVer.String() != "cat (coreutils-go) 0.1.0\n" || errVer.Len() > 0 {
+		t.Errorf("Execute(--version) err=%v, stdout=%q, stderr=%q", err, outVer.String(), errVer.String())
 	}
 
 	// Test Invalid Option
 	var outInv, errInv bytes.Buffer
-	code = run([]string{"--unknown-flag"}, nil, &outInv, &errInv)
-	if code != 1 || !strings.Contains(errInv.String(), "unrecognized option '--unknown-flag'") {
-		t.Errorf("run(--unknown-flag) code=%d, stderr=%q", code, errInv.String())
+	err = newCommand().Execute([]string{"--unknown-flag"}, nil, &outInv, &errInv)
+	if err == nil || !strings.Contains(errInv.String(), "unrecognized option '--unknown-flag'") {
+		t.Errorf("Execute(--unknown-flag) err=%v, stderr=%q", err, errInv.String())
 	}
 
 	// Test Success Run
 	var outRun, errRun bytes.Buffer
-	code = run([]string{}, strings.NewReader("hello cat\n"), &outRun, &errRun)
-	if code != 0 || outRun.String() != "hello cat\n" || errRun.Len() > 0 {
-		t.Errorf("run() code=%d, stdout=%q, stderr=%q", code, outRun.String(), errRun.String())
+	err = newCommand().Execute([]string{}, strings.NewReader("hello cat\n"), &outRun, &errRun)
+	if err != nil || outRun.String() != "hello cat\n" || errRun.Len() > 0 {
+		t.Errorf("Execute() err=%v, stdout=%q, stderr=%q", err, outRun.String(), errRun.String())
 	}
 }
 
@@ -319,8 +302,9 @@ func TestE2E_Help(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stderr %q)", code, stderr)
 	}
-	if stdout != getHelpStr() {
-		t.Errorf("--help output mismatch:\n got: %q\nwant: %q", stdout, getHelpStr())
+	expectedHelp := newCommand().Help()
+	if stdout != expectedHelp {
+		t.Errorf("--help output mismatch:\n got: %q\nwant: %q", stdout, expectedHelp)
 	}
 	if stderr != "" {
 		t.Errorf("stderr = %q, want empty", stderr)

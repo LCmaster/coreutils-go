@@ -13,7 +13,7 @@ import (
 
 const bufferSize = ioutils.DefaultBufferSize // Memory buffer for optimal I/O throughput
 
-type Options struct {
+type CatOptions struct {
 	NumberNonBlank  bool
 	ShowEnds        bool
 	Number          bool
@@ -23,7 +23,7 @@ type Options struct {
 	Unbuffered      bool
 }
 
-func (o Options) NeedsFormatting() bool {
+func (o CatOptions) NeedsFormatting() bool {
 	return o.NumberNonBlank || o.ShowEnds || o.Number ||
 		o.SqueezeBlank || o.ShowTabs || o.ShowNonPrinting
 }
@@ -38,7 +38,7 @@ func copyStream(out io.Writer, r io.Reader) error {
 	return err
 }
 
-func processFile(filename string, stdin io.Reader, stdout io.Writer, opts Options, state *StreamState, pipeline LineTransformer, w *bufio.Writer) error {
+func processFile(filename string, stdin io.Reader, stdout io.Writer, opts CatOptions, state *StreamState, pipeline LineTransformer, w *bufio.Writer) error {
 	var r io.Reader = stdin
 	if filename != "-" {
 		f, err := os.Open(filename)
@@ -70,7 +70,7 @@ func processFile(filename string, stdin io.Reader, stdout io.Writer, opts Option
 	return copyStream(out, r)
 }
 
-func processStream(w *bufio.Writer, r io.Reader, opts Options, state *StreamState, transform LineTransformer) error {
+func processStream(w *bufio.Writer, r io.Reader, opts CatOptions, state *StreamState, transform LineTransformer) error {
 	reader := bufio.NewReaderSize(r, bufferSize)
 	for {
 		line, err := reader.ReadBytes('\n')
