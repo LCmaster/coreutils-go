@@ -262,7 +262,7 @@ func TestFalse_StdinIgnored(t *testing.T) {
 }
 
 func TestUnit_PrintHelp(t *testing.T) {
-	help := printHelp()
+	help := getHelpStr()
 	expectedSnippets := []string{
 		"Usage:",
 		"false [ignored command line arguments]",
@@ -274,19 +274,15 @@ func TestUnit_PrintHelp(t *testing.T) {
 
 	for _, snippet := range expectedSnippets {
 		if !strings.Contains(help, snippet) {
-			t.Errorf("printHelp() missing snippet %q", snippet)
+			t.Errorf("getHelpStr() missing snippet %q", snippet)
 		}
 	}
 }
 
 func TestUnit_PrintVersion(t *testing.T) {
-	out, err := captureStdout(func() error {
-		return printVersion()
-	})
-	if err != nil {
-		t.Fatalf("captureStdout error: %v", err)
-	}
-	if out != "false (coreutils-go) 0.1.0\n" {
-		t.Errorf("expected 'false (coreutils-go) 0.1.0\\n', got %q", out)
+	ver := getVersionStr()
+	if ver != "false (coreutils-go) 0.1.0" {
+		t.Errorf("expected 'false (coreutils-go) 0.1.0', got %q", ver)
 	}
 }
+
