@@ -352,25 +352,21 @@ func TestYes_CLI_MultipleArgsWithFlags(t *testing.T) {
 }
 
 func TestUnit_PrintHelp(t *testing.T) {
-	help := printHelp()
+	help := getHelpStr()
 	for _, snippet := range []string{"Usage:", "yes", "Description:", "-h, --help", "-v, --version"} {
 		if !strings.Contains(help, snippet) {
-			t.Errorf("printHelp() missing snippet %q", snippet)
+			t.Errorf("getHelpStr() missing snippet %q", snippet)
 		}
 	}
 }
 
 func TestUnit_PrintVersion(t *testing.T) {
-	out, err := captureStdout(func() error {
-		return printVersion()
-	})
-	if err != nil {
-		t.Fatalf("captureStdout error: %v", err)
-	}
-	if out != "yes (coreutils-go) 0.1.0\n" {
-		t.Errorf("expected 'yes (coreutils-go) 0.1.0\\n', got %q", out)
+	ver := getVersionStr()
+	if ver != "yes (coreutils-go) 0.1.0" {
+		t.Errorf("expected 'yes (coreutils-go) 0.1.0', got %q", ver)
 	}
 }
+
 
 // limitWriter stops writing after totalBytes have been written and returns io.EOF.
 type limitWriter struct {
