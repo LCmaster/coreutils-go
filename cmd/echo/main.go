@@ -7,7 +7,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/LCmaster/coreutils-go/pkg/unescape"
+	"github.com/LCmaster/coreutils-go/pkg/cli"
+	"github.com/LCmaster/coreutils-go/pkg/ioutils"
+	"github.com/LCmaster/coreutils-go/pkg/strutils"
+	"github.com/LCmaster/coreutils-go/pkg/version"
 )
 
 type CLIAction int
@@ -30,7 +33,7 @@ func IdentityTransformer(s string) (string, bool) {
 }
 
 func EscapeTransformer(s string) (string, bool) {
-	return unescape.Unescape(s)
+	return strutils.Unescape(s)
 }
 
 func FormatEcho(args []string, opts EchoOptions) string {
@@ -111,56 +114,59 @@ func parseArgs(rawArgs []string) (EchoOptions, []string, CLIAction) {
 	return opts, rawArgs[i:], ActionRun
 }
 
-func printHelp() string {
-	helpMessage := "" +
-		"Usage:\n" +
-		"echo [OPTIONS]... [STRING]...\n" +
-		"\n" +
-		"Description:\n" +
-		"echo writes each given string to standard output, with a space between each and a newline after the last one.\n" +
-		"  -n\t\t\tdo not output the trailing newline\n" +
-		"  -e\t\t\tenable interpretation of backslash escapes\n" +
-		"  -E\t\t\tdisable interpretation of backslash escapes (default)\n" +
-		"  -h, --help\tdisplay this help and exit\n" +
-		"  -v, --version\toutput version information and exit\n" +
-		"\n" +
-		"If -e is in effect, the following sequences are recognized:\n" +
-		"  \\\\\t\tbackslash\n" +
-		"  \\a\t\talert (BEL)\n" +
-		"  \\b\t\tbackspace\n" +
-		"  \\c\t\tproduce no further output\n" +
-		"  \\e\t\tescape\n" +
-		"  \\f\t\tform feed\n" +
-		"  \\n\t\tnew line\n" +
-		"  \\r\t\tcarriage return\n" +
-		"  \\t\t\thorizontal tab\n" +
-		"  \\v\t\tvertical tab\n" +
-		"  \\0NNN\t\tbyte with octal value NNN (1 to 3 digits)\n" +
-		"  \\xHH\t\tbyte with hexadecimal value HH (1 to 2 digits)\n"
-
-	return helpMessage
+func getHelpStr() string {
+	return cli.FormatHelp(cli.HelpConfig{
+		Usage:       []string{"echo [OPTIONS]... [STRING]..."},
+		Description: "echo writes each given string to standard output, with a space between each and a newline after the last one.",
+		Options: []cli.HelpOption{
+			cli.Opt('n', "", "", "do not output the trailing newline"),
+			cli.Opt('e', "", "", "enable interpretation of backslash escapes"),
+			cli.Opt('E', "", "", "disable interpretation of backslash escapes (default)"),
+			cli.Opt('h', "help", "", "display this help and exit"),
+			cli.Opt('v', "version", "", "output version information and exit"),
+		},
+		Notes: "If -e is in effect, the following sequences are recognized:\n" +
+			"  \\\\\t\tbackslash\n" +
+			"  \\a\t\talert (BEL)\n" +
+			"  \\b\t\tbackspace\n" +
+			"  \\c\t\tproduce no further output\n" +
+			"  \\e\t\tescape\n" +
+			"  \\f\t\tform feed\n" +
+			"  \\n\t\tnew line\n" +
+			"  \\r\t\tcarriage return\n" +
+			"  \\t\t\thorizontal tab\n" +
+			"  \\v\t\tvertical tab\n" +
+			"  \\0NNN\t\tbyte with octal value NNN (1 to 3 digits)\n" +
+			"  \\xHH\t\tbyte with hexadecimal value HH (1 to 2 digits)",
+	})
 }
 
-func printVersion(w io.Writer) {
-	fmt.Fprintln(w, "echo (coreutils-go) 0.1.0")
+func getVersionStr() string {
+	return version.Format("echo")
 }
 
-func run(args []string, stdout io.Writer) int {
+func run(args []string, _ io.Reader, stdout, _ io.Writer) int {
 	opts, stringArgs, action := parseArgs(args)
 
 	switch action {
 	case ActionVersion:
-		printVersion(stdout)
+		if _, err := fmt.Fprintln(stdout, getVersionStr()); err != nil && !ioutils.IsBrokenPipe(err) {
+			return 1
+		}
 	case ActionHelp:
-		fmt.Fprint(stdout, printHelp())
+		if _, err := fmt.Fprint(stdout, getHelpStr()); err != nil && !ioutils.IsBrokenPipe(err) {
+			return 1
+		}
 	case ActionRun:
 		writer := bufio.NewWriter(stdout)
 		defer writer.Flush()
-		writer.WriteString(FormatEcho(stringArgs, opts))
+		if _, err := writer.WriteString(FormatEcho(stringArgs, opts)); err != nil && !ioutils.IsBrokenPipe(err) {
+			return 1
+		}
 	}
 	return 0
 }
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout))
+	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }

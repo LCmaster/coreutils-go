@@ -521,7 +521,7 @@ func TestEcho_HelpFlag(t *testing.T) {
 }
 
 func TestUnit_PrintHelp(t *testing.T) {
-	help := printHelp()
+	help := getHelpStr()
 	expectedSubstrings := []string{
 		"Usage:",
 		"echo [OPTIONS]... [STRING]...",
@@ -540,12 +540,12 @@ func TestUnit_PrintHelp(t *testing.T) {
 }
 
 func TestUnit_PrintVersion(t *testing.T) {
-	var buf bytes.Buffer
-	printVersion(&buf)
-	if buf.String() != "echo (coreutils-go) 0.1.0\n" {
-		t.Errorf("expected 'echo (coreutils-go) 0.1.0\\n', got %q", buf.String())
+	ver := getVersionStr()
+	if ver != "echo (coreutils-go) 0.1.0" {
+		t.Errorf("expected 'echo (coreutils-go) 0.1.0', got %q", ver)
 	}
 }
+
 
 func TestUnit_FormatEcho(t *testing.T) {
 	tests := []struct {
