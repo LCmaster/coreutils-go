@@ -11,11 +11,6 @@ import (
 	"github.com/LCmaster/coreutils-go/pkg/strutils"
 )
 
-type EchoOptions struct {
-	NoNewline    bool
-	EnableEscape bool
-}
-
 type ArgTransformer func(string) (output string, halt bool)
 
 func IdentityTransformer(s string) (string, bool) {
@@ -26,9 +21,9 @@ func EscapeTransformer(s string) (string, bool) {
 	return strutils.Unescape(s)
 }
 
-func FormatEcho(args []string, opts EchoOptions) string {
+func FormatEcho(args []string, opts cli.Options) string {
 	transform := IdentityTransformer
-	if opts.EnableEscape {
+	if opts.Bool("EnableEscape") {
 		transform = EscapeTransformer
 	}
 
@@ -49,7 +44,7 @@ func FormatEcho(args []string, opts EchoOptions) string {
 		}
 	}
 
-	if !opts.NoNewline && !halt {
+	if !opts.Bool("NoNewline") && !halt {
 		b.WriteByte('\n')
 	}
 
@@ -57,12 +52,9 @@ func FormatEcho(args []string, opts EchoOptions) string {
 }
 
 func newCommand() *cli.Command {
-	var opts EchoOptions
-
 	cmd := cli.NewCommand("echo")
 	cmd.Helper.SetUsage("echo [OPTIONS]... [STRING]...")
 	cmd.SetStopOnUnknown(true)
-
 	cmd.EnableAutoShortVersion()
 	cmd.SetDescription("echo writes each given string to standard output, with a space between each and a newline after the last one.")
 	cmd.SetNotes("If -e is in effect, the following sequences are recognized:\n" +
@@ -79,20 +71,23 @@ func newCommand() *cli.Command {
 		"  \\0NNN\t\tbyte with octal value NNN (1 to 3 digits)\n" +
 		"  \\xHH\t\tbyte with hexadecimal value HH (1 to 2 digits)")
 
-	cmd.BoolVar(&opts.NoNewline, 'n', "", "do not output the trailing newline")
+	cmd.FlagFunc('n', "", "do not output the trailing newline", false, func(_ string) error {
+		cmd.Options.Bools["NoNewline"] = true
+		return nil
+	})
 	cmd.FlagFunc('e', "", "enable interpretation of backslash escapes", false, func(_ string) error {
-		opts.EnableEscape = true
+		cmd.Options.Bools["EnableEscape"] = true
 		return nil
 	})
 	cmd.FlagFunc('E', "", "disable interpretation of backslash escapes (default)", false, func(_ string) error {
-		opts.EnableEscape = false
+		cmd.Options.Bools["EnableEscape"] = false
 		return nil
 	})
 
 	cmd.Run = func(c *cli.Command, _ io.Reader, stdout, _ io.Writer) error {
 		writer := bufio.NewWriter(stdout)
 		defer writer.Flush()
-		if _, err := writer.WriteString(FormatEcho(c.Operands(), opts)); err != nil && !ioutils.IsBrokenPipe(err) {
+		if _, err := writer.WriteString(FormatEcho(c.Operands(), *c.Options)); err != nil && !ioutils.IsBrokenPipe(err) {
 			return err
 		}
 		return nil
