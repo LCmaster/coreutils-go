@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/LCmaster/coreutils-go/pkg/fsutils"
 )
 
 var binaryPath string
@@ -98,7 +100,7 @@ func captureStdout(f func() error) (string, error) {
 // ---------------------------------------------------------------------------
 
 func TestUnit_PrintHelp(t *testing.T) {
-	help := printHelp()
+	help := getHelpStr()
 	for _, expected := range []string{
 		"Usage:",
 		"pwd [OPTION]...",
@@ -110,21 +112,18 @@ func TestUnit_PrintHelp(t *testing.T) {
 		"-v, --version",
 	} {
 		if !strings.Contains(help, expected) {
-			t.Errorf("printHelp() missing snippet %q", expected)
+			t.Errorf("getHelpStr() missing snippet %q", expected)
 		}
 	}
 	if !strings.HasSuffix(help, "\n") {
-		t.Error("printHelp() should end with a newline")
+		t.Error("getHelpStr() should end with a newline")
 	}
 }
 
 func TestUnit_PrintVersion(t *testing.T) {
-	out, err := captureStdout(printVersion)
-	if err != nil {
-		t.Fatalf("printVersion error: %v", err)
-	}
-	if out != "pwd (coreutils-go) 0.1.0\n" {
-		t.Errorf("printVersion() = %q, want 'pwd (coreutils-go) 0.1.0\\n'", out)
+	ver := getVersionStr()
+	if ver != "pwd (coreutils-go) 0.1.0" {
+		t.Errorf("getVersionStr() = %q, want 'pwd (coreutils-go) 0.1.0'", ver)
 	}
 }
 
@@ -132,21 +131,8 @@ func TestUnit_PrintVersion(t *testing.T) {
 // Unit tests: Functional Combinators & Predicates
 // ---------------------------------------------------------------------------
 
-func TestUnit_Functional_AnyMatch(t *testing.T) {
-	nums := []int{1, 3, 5, 8, 9}
-	isEven := func(n int) bool { return n%2 == 0 }
-	isNegative := func(n int) bool { return n < 0 }
-
-	if !anyMatch(nums, isEven) {
-		t.Error("expected anyMatch to find an even number")
-	}
-	if anyMatch(nums, isNegative) {
-		t.Error("expected anyMatch not to find negative numbers")
-	}
-}
-
 func TestUnit_Functional_SplitPathSegments(t *testing.T) {
-	segments := splitPathSegments("/a/b//c/d/")
+	segments := fsutils.SplitSegments("/a/b//c/d/")
 	expected := []string{"a", "b", "c", "d"}
 	if len(segments) != len(expected) {
 		t.Fatalf("splitPathSegments() got %v, want %v", segments, expected)
@@ -355,28 +341,28 @@ func TestUnit_ParseArgs(t *testing.T) {
 func TestUnit_Run(t *testing.T) {
 	// Test Help
 	var outHelp, errHelp bytes.Buffer
-	code := run([]string{"-h"}, &outHelp, &errHelp)
+	code := run([]string{"-h"}, nil, &outHelp, &errHelp)
 	if code != 0 || !strings.Contains(outHelp.String(), "Usage:") || errHelp.Len() > 0 {
 		t.Errorf("run(-h) code=%d, stdout=%q, stderr=%q", code, outHelp.String(), errHelp.String())
 	}
 
 	// Test Version
 	var outVer, errVer bytes.Buffer
-	code = run([]string{"--version"}, &outVer, &errVer)
+	code = run([]string{"--version"}, nil, &outVer, &errVer)
 	if code != 0 || outVer.String() != "pwd (coreutils-go) 0.1.0\n" || errVer.Len() > 0 {
 		t.Errorf("run(--version) code=%d, stdout=%q, stderr=%q", code, outVer.String(), errVer.String())
 	}
 
 	// Test Invalid Option
 	var outInv, errInv bytes.Buffer
-	code = run([]string{"--not-a-flag"}, &outInv, &errInv)
+	code = run([]string{"--not-a-flag"}, nil, &outInv, &errInv)
 	if code != 1 || !strings.Contains(errInv.String(), "unrecognized option '--not-a-flag'") {
 		t.Errorf("run(--not-a-flag) code=%d, stderr=%q", code, errInv.String())
 	}
 
 	// Test Success Run
 	var outRun, errRun bytes.Buffer
-	code = run([]string{}, &outRun, &errRun)
+	code = run([]string{}, nil, &outRun, &errRun)
 	if code != 0 || outRun.Len() == 0 || errRun.Len() > 0 {
 		t.Errorf("run() code=%d, stdout=%q, stderr=%q", code, outRun.String(), errRun.String())
 	}
@@ -420,8 +406,8 @@ func TestE2E_Help(t *testing.T) {
 			if code != 0 || stderr != "" {
 				t.Fatalf("code=%d, stderr=%q", code, stderr)
 			}
-			if stdout != printHelp() {
-				t.Errorf("%s output mismatch:\n got: %q\nwant: %q", flag, stdout, printHelp())
+			if stdout != getHelpStr() {
+				t.Errorf("%s output mismatch:\n got: %q\nwant: %q", flag, stdout, getHelpStr())
 			}
 		})
 	}

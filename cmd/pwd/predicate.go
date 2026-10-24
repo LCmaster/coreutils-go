@@ -1,43 +1,25 @@
 package main
 
 import (
-	"os"
 	"path/filepath"
-	"strings"
+
+	"github.com/LCmaster/coreutils-go/pkg/fn"
+	"github.com/LCmaster/coreutils-go/pkg/fsutils"
+	"github.com/LCmaster/coreutils-go/pkg/ioutils"
 )
 
-func anyMatch[T any](items []T, predicate func(T) bool) bool {
-	for _, item := range items {
-		if predicate(item) {
-			return true
-		}
-	}
-	return false
-}
-
-func splitPathSegments(path string) []string {
-	return strings.FieldsFunc(path, func(r rune) bool {
-		return r == '/' || r == filepath.Separator
-	})
-}
-
 func hasDotComponents(path string) bool {
-	return anyMatch(splitPathSegments(path), func(segment string) bool {
-		return segment == "." || segment == ".."
-	})
+	return fsutils.HasDotComponents(path)
 }
 
 type PathPredicate func(path string) bool
 
 func allPredicates(predicates ...PathPredicate) PathPredicate {
-	return func(path string) bool {
-		for _, pred := range predicates {
-			if !pred(path) {
-				return false
-			}
-		}
-		return true
+	preds := make([]func(string) bool, len(predicates))
+	for i, p := range predicates {
+		preds[i] = p
 	}
+	return fn.All(preds...)
 }
 
 func isNonEmpty(path string) bool {
@@ -49,15 +31,13 @@ func isAbsolute(path string) bool {
 }
 
 func hasNoDotComponents(path string) bool {
-	return !hasDotComponents(path)
+	return !fsutils.HasDotComponents(path)
 }
 
-func isCurrentDirectory(path string) bool {
-	pwdStat, errPwd := os.Stat(path)
-	currentDirStat, errCurrentDir := os.Stat(".")
-	return errPwd == nil && errCurrentDir == nil && os.SameFile(pwdStat, currentDirStat)
+func isBrokenPipe(err error) bool {
+	return ioutils.IsBrokenPipe(err)
 }
 
-var isValidLogicalPath = allPredicates(isNonEmpty, isAbsolute, hasNoDotComponents, isCurrentDirectory)
+var isValidLogicalPath = fn.All(isNonEmpty, isAbsolute, hasNoDotComponents, fsutils.IsCurrentDirectory)
 
 type DirResolver func() (string, error)
