@@ -13,6 +13,9 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/LCmaster/coreutils-go/pkg/fsutils"
+	"github.com/LCmaster/coreutils-go/pkg/ioutils"
 )
 
 var binaryPath string
@@ -79,32 +82,12 @@ func writeFile(t *testing.T, name string, content string) string {
 	return path
 }
 
-func captureStdout(f func() error) (string, error) {
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		return "", err
-	}
-	os.Stdout = w
-
-	ferr := f()
-
-	_ = w.Close()
-	os.Stdout = old
-	out, rerr := io.ReadAll(r)
-	_ = r.Close()
-	if ferr != nil {
-		return string(out), ferr
-	}
-	return string(out), rerr
-}
-
 // ---------------------------------------------------------------------------
 // Unit tests
 // ---------------------------------------------------------------------------
 
 func TestUnit_PrintHelp(t *testing.T) {
-	help := printHelp()
+	help := getHelpStr()
 	for _, snippet := range []string{
 		"Usage:",
 		"cat [OPTION]... [FILE]...",
@@ -126,23 +109,21 @@ func TestUnit_PrintHelp(t *testing.T) {
 		"Examples:",
 	} {
 		if !strings.Contains(help, snippet) {
-			t.Errorf("printHelp() missing snippet %q", snippet)
+			t.Errorf("getHelpStr() missing snippet %q", snippet)
 		}
 	}
 	if !strings.HasSuffix(help, "\n") {
-		t.Error("printHelp() should end with a newline")
+		t.Error("getHelpStr() should end with a newline")
 	}
 }
 
 func TestUnit_PrintVersion(t *testing.T) {
-	var buf bytes.Buffer
-	if err := printVersion(&buf); err != nil {
-		t.Fatalf("printVersion error: %v", err)
-	}
-	if buf.String() != "cat (coreutils-go) 0.1.0\n" {
-		t.Errorf("printVersion() = %q, want %q", buf.String(), "cat (coreutils-go) 0.1.0\n")
+	ver := getVersionStr()
+	if ver != "cat (coreutils-go) 0.1.0" {
+		t.Errorf("getVersionStr() = %q, want %q", ver, "cat (coreutils-go) 0.1.0")
 	}
 }
+
 
 func TestUnit_FormatTabs(t *testing.T) {
 	input := []byte("a\tb\t\n")
@@ -202,16 +183,16 @@ func TestUnit_ProcessStream(t *testing.T) {
 }
 
 func TestUnit_IsBrokenPipe(t *testing.T) {
-	if !isBrokenPipe(syscall.EPIPE) {
+	if !ioutils.IsBrokenPipe(syscall.EPIPE) {
 		t.Error("expected syscall.EPIPE to be recognized as broken pipe")
 	}
-	if !isBrokenPipe(fmt.Errorf("write: broken pipe")) {
+	if !ioutils.IsBrokenPipe(fmt.Errorf("write: broken pipe")) {
 		t.Error("expected 'broken pipe' string error to be recognized")
 	}
-	if isBrokenPipe(nil) {
+	if ioutils.IsBrokenPipe(nil) {
 		t.Error("nil should not be broken pipe")
 	}
-	if isBrokenPipe(fmt.Errorf("file not found")) {
+	if ioutils.IsBrokenPipe(fmt.Errorf("file not found")) {
 		t.Error("file not found should not be broken pipe")
 	}
 }
@@ -225,7 +206,7 @@ func TestUnit_IsSameAsOutput(t *testing.T) {
 	defer f.Close()
 
 	// Comparing against itself should be true
-	if !isSameAsOutput(f, f) {
+	if !fsutils.IsSameAsOutput(f, f) {
 		t.Error("expected same file to be detected as output cycle")
 	}
 
@@ -237,7 +218,7 @@ func TestUnit_IsSameAsOutput(t *testing.T) {
 	}
 	defer fOther.Close()
 
-	if isSameAsOutput(f, fOther) {
+	if fsutils.IsSameAsOutput(f, fOther) {
 		t.Error("different files should not be detected as same output")
 	}
 }
@@ -299,6 +280,36 @@ func TestUnit_ParseArgs(t *testing.T) {
 	}
 }
 
+func TestUnit_Run(t *testing.T) {
+	// Test Help
+	var outHelp, errHelp bytes.Buffer
+	code := run([]string{"--help"}, nil, &outHelp, &errHelp)
+	if code != 0 || !strings.Contains(outHelp.String(), "Usage:") || errHelp.Len() > 0 {
+		t.Errorf("run(--help) code=%d, stdout=%q, stderr=%q", code, outHelp.String(), errHelp.String())
+	}
+
+	// Test Version
+	var outVer, errVer bytes.Buffer
+	code = run([]string{"--version"}, nil, &outVer, &errVer)
+	if code != 0 || outVer.String() != "cat (coreutils-go) 0.1.0\n" || errVer.Len() > 0 {
+		t.Errorf("run(--version) code=%d, stdout=%q, stderr=%q", code, outVer.String(), errVer.String())
+	}
+
+	// Test Invalid Option
+	var outInv, errInv bytes.Buffer
+	code = run([]string{"--unknown-flag"}, nil, &outInv, &errInv)
+	if code != 1 || !strings.Contains(errInv.String(), "unrecognized option '--unknown-flag'") {
+		t.Errorf("run(--unknown-flag) code=%d, stderr=%q", code, errInv.String())
+	}
+
+	// Test Success Run
+	var outRun, errRun bytes.Buffer
+	code = run([]string{}, strings.NewReader("hello cat\n"), &outRun, &errRun)
+	if code != 0 || outRun.String() != "hello cat\n" || errRun.Len() > 0 {
+		t.Errorf("run() code=%d, stdout=%q, stderr=%q", code, outRun.String(), errRun.String())
+	}
+}
+
 // ---------------------------------------------------------------------------
 // --help / --version
 // ---------------------------------------------------------------------------
@@ -308,8 +319,8 @@ func TestE2E_Help(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stderr %q)", code, stderr)
 	}
-	if stdout != printHelp() {
-		t.Errorf("--help output mismatch:\n got: %q\nwant: %q", stdout, printHelp())
+	if stdout != getHelpStr() {
+		t.Errorf("--help output mismatch:\n got: %q\nwant: %q", stdout, getHelpStr())
 	}
 	if stderr != "" {
 		t.Errorf("stderr = %q, want empty", stderr)

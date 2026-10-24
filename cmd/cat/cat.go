@@ -2,15 +2,16 @@ package main
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"io"
 	"os"
-	"strings"
-	"syscall"
+
+	"github.com/LCmaster/coreutils-go/pkg/fsutils"
+	"github.com/LCmaster/coreutils-go/pkg/ioutils"
+	"github.com/LCmaster/coreutils-go/pkg/strutils"
 )
 
-const bufferSize = 64 * 1024 // 64 KB memory buffer for optimal I/O throughput
+const bufferSize = ioutils.DefaultBufferSize // Memory buffer for optimal I/O throughput
 
 type Options struct {
 	NumberNonBlank  bool
@@ -37,34 +38,6 @@ func copyStream(out io.Writer, r io.Reader) error {
 	return err
 }
 
-func isSameAsOutput(file *os.File, out io.Writer) bool {
-	stat, err := file.Stat()
-	if err != nil || stat.IsDir() {
-		return false
-	}
-
-	var outStat os.FileInfo
-	if outFile, ok := out.(*os.File); ok {
-		if s, err := outFile.Stat(); err == nil && s.Mode().IsRegular() {
-			outStat = s
-		}
-	} else if s, err := os.Stdout.Stat(); err == nil && s.Mode().IsRegular() {
-		outStat = s
-	}
-
-	if outStat != nil {
-		return os.SameFile(stat, outStat)
-	}
-	return false
-}
-
-func isBrokenPipe(err error) bool {
-	if err == nil {
-		return false
-	}
-	return errors.Is(err, syscall.EPIPE) || strings.Contains(strings.ToLower(err.Error()), "broken pipe")
-}
-
 func processFile(filename string, stdin io.Reader, stdout io.Writer, opts Options, state *StreamState, pipeline LineTransformer, w *bufio.Writer) error {
 	var r io.Reader = stdin
 	if filename != "-" {
@@ -79,7 +52,7 @@ func processFile(filename string, stdin io.Reader, stdout io.Writer, opts Option
 			return fmt.Errorf("Is a directory")
 		}
 
-		if isSameAsOutput(f, stdout) {
+		if fsutils.IsSameAsOutput(f, stdout) {
 			return fmt.Errorf("input file is also the output")
 		}
 		r = f
@@ -109,17 +82,17 @@ func processStream(w *bufio.Writer, r io.Reader, opts Options, state *StreamStat
 		}
 
 		if opts.SqueezeBlank {
-			if state.PrevBlank && isEmptyLine(line) {
+			if state.PrevBlank && strutils.IsEmptyLine(line) {
 				if err == io.EOF {
 					break
 				}
 				continue
 			}
-			state.PrevBlank = isEmptyLine(line)
+			state.PrevBlank = strutils.IsEmptyLine(line)
 		}
 
 		if opts.NumberNonBlank {
-			if isEmptyLine(line) {
+			if strutils.IsEmptyLine(line) {
 				if _, writeErr := w.Write(line); writeErr != nil {
 					return writeErr
 				}

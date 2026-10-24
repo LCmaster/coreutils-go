@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
+
+	"github.com/LCmaster/coreutils-go/pkg/cli"
+	"github.com/LCmaster/coreutils-go/pkg/ioutils"
+	"github.com/LCmaster/coreutils-go/pkg/version"
 )
 
 type CLIAction int
@@ -18,138 +21,122 @@ const (
 
 func parseArgs(args []string) (Options, []string, CLIAction, error) {
 	var opts Options
-	var files []string
+	p := cli.NewParser("cat", "cat [OPTION]... [FILE]...")
+	p.DisableAutoShortHelp()
+	p.SetDefaultOperands("-")
 
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
+	p.FlagFunc('A', "show-all", "equivalent to -vET", false, func(_ string) error {
+		opts.ShowNonPrinting = true
+		opts.ShowEnds = true
+		opts.ShowTabs = true
+		return nil
+	})
+	p.FlagFunc('b', "number-nonblank", "number nonempty output lines, overrides -n", false, func(_ string) error {
+		opts.NumberNonBlank = true
+		return nil
+	})
+	p.FlagFunc('e', "", "equivalent to -vE", false, func(_ string) error {
+		opts.ShowNonPrinting = true
+		opts.ShowEnds = true
+		return nil
+	})
+	p.FlagFunc('E', "show-ends", "display $ at end of each line", false, func(_ string) error {
+		opts.ShowEnds = true
+		return nil
+	})
+	p.FlagFunc('n', "number", "number all output lines", false, func(_ string) error {
+		opts.Number = true
+		return nil
+	})
+	p.FlagFunc('s', "squeeze-blank", "suppress repeated empty output lines", false, func(_ string) error {
+		opts.SqueezeBlank = true
+		return nil
+	})
+	p.FlagFunc('t', "", "equivalent to -vT", false, func(_ string) error {
+		opts.ShowNonPrinting = true
+		opts.ShowTabs = true
+		return nil
+	})
+	p.FlagFunc('T', "show-tabs", "display TAB characters as ^I", false, func(_ string) error {
+		opts.ShowTabs = true
+		return nil
+	})
+	p.FlagFunc('u', "", "(ignored)", false, func(_ string) error {
+		opts.Unbuffered = true
+		return nil
+	})
+	p.FlagFunc('v', "show-nonprinting", "use ^ and M- notation, except for LFD and TAB", false, func(_ string) error {
+		opts.ShowNonPrinting = true
+		return nil
+	})
 
-		if arg == "--" {
-			files = append(files, args[i+1:]...)
-			break
-		}
+	files, action, err := p.Parse(args)
+	if err != nil {
+		return opts, nil, ActionRun, err
+	}
 
-		if arg == "-" || !strings.HasPrefix(arg, "-") {
-			files = append(files, arg)
-			continue
-		}
-
-		switch arg {
-		case "--help":
-			return opts, nil, ActionHelp, nil
-		case "--version":
-			return opts, nil, ActionVersion, nil
-		case "--show-all":
-			opts.ShowNonPrinting = true
-			opts.ShowEnds = true
-			opts.ShowTabs = true
-		case "--number-nonblank":
-			opts.NumberNonBlank = true
-		case "--show-ends":
-			opts.ShowEnds = true
-		case "--number":
-			opts.Number = true
-		case "--squeeze-blank":
-			opts.SqueezeBlank = true
-		case "--show-tabs":
-			opts.ShowTabs = true
-		case "--show-nonprinting":
-			opts.ShowNonPrinting = true
-		default:
-			if strings.HasPrefix(arg, "--") {
-				return opts, nil, ActionRun, fmt.Errorf("unrecognized option '%s'", arg)
-			}
-
-			for _, flagChar := range arg[1:] {
-				switch flagChar {
-				case 'A':
-					opts.ShowNonPrinting = true
-					opts.ShowEnds = true
-					opts.ShowTabs = true
-				case 'b':
-					opts.NumberNonBlank = true
-				case 'e':
-					opts.ShowNonPrinting = true
-					opts.ShowEnds = true
-				case 'E':
-					opts.ShowEnds = true
-				case 'n':
-					opts.Number = true
-				case 's':
-					opts.SqueezeBlank = true
-				case 't':
-					opts.ShowNonPrinting = true
-					opts.ShowTabs = true
-				case 'T':
-					opts.ShowTabs = true
-				case 'u':
-					opts.Unbuffered = true
-				case 'v':
-					opts.ShowNonPrinting = true
-				default:
-					return opts, nil, ActionRun, fmt.Errorf("invalid option -- '%c'", flagChar)
-				}
-			}
-		}
+	var cliAction CLIAction = ActionRun
+	switch action {
+	case cli.ActionHelp:
+		cliAction = ActionHelp
+	case cli.ActionVersion:
+		cliAction = ActionVersion
 	}
 
 	if opts.NumberNonBlank {
 		opts.Number = false
 	}
 
-	if len(files) == 0 {
-		files = []string{"-"}
-	}
-
-	return opts, files, ActionRun, nil
+	return opts, files, cliAction, nil
 }
 
-func printHelp() string {
-	helpMessage := "" +
-		"Usage:\n" +
-		"cat [OPTION]... [FILE]...\n" +
-		"\n" +
-		"Description:\n" +
-		"Concatenate FILE(s) to standard output.\n" +
-		"With no FILE, or when FILE is -, read standard input.\n" +
-		"\n" +
-		"  -A, --show-all\t\tequivalent to -vET\n" +
-		"  -b, --number-nonblank\t\tnumber nonempty output lines, overrides -n\n" +
-		"  -e\t\t\t\tequivalent to -vE\n" +
-		"  -E, --show-ends\t\tdisplay $ at end of each line\n" +
-		"  -n, --number\t\t\tnumber all output lines\n" +
-		"  -s, --squeeze-blank\t\tsuppress repeated empty output lines\n" +
-		"  -t\t\t\t\tequivalent to -vT\n" +
-		"  -T, --show-tabs\t\tdisplay TAB characters as ^I\n" +
-		"  -u\t\t\t\t(ignored)\n" +
-		"  -v, --show-nonprinting\tuse ^ and M- notation, except for LFD and TAB\n" +
-		"      --help\t\t\tdisplay this help and exit\n" +
-		"      --version\t\t\toutput version information and exit\n" +
-		"\n" +
-		"Examples:\n" +
-		"  cat f - g  Output f's contents, then standard input, then g's contents.\n" +
-		"  cat        Copy standard input to standard output.\n"
-
-	return helpMessage
+func getHelpStr() string {
+	return cli.FormatHelp(cli.HelpConfig{
+		Usage: []string{"cat [OPTION]... [FILE]..."},
+		Description: "Concatenate FILE(s) to standard output.\n" +
+			"With no FILE, or when FILE is -, read standard input.",
+		Options: []cli.HelpOption{
+			cli.Opt('A', "show-all", "", "equivalent to -vET"),
+			cli.Opt('b', "number-nonblank", "", "number nonempty output lines, overrides -n"),
+			cli.Opt('e', "", "", "equivalent to -vE"),
+			cli.Opt('E', "show-ends", "", "display $ at end of each line"),
+			cli.Opt('n', "number", "", "number all output lines"),
+			cli.Opt('s', "squeeze-blank", "", "suppress repeated empty output lines"),
+			cli.Opt('t', "", "", "equivalent to -vT"),
+			cli.Opt('T', "show-tabs", "", "display TAB characters as ^I"),
+			cli.Opt('u', "", "", "(ignored)"),
+			cli.Opt('v', "show-nonprinting", "", "use ^ and M- notation, except for LFD and TAB"),
+			cli.Opt(0, "help", "", "display this help and exit"),
+			cli.Opt(0, "version", "", "output version information and exit"),
+		},
+		Examples: []string{
+			"cat f - g  Output f's contents, then standard input, then g's contents.",
+			"cat        Copy standard input to standard output.",
+		},
+	})
 }
 
-func printVersion(w io.Writer) error {
-	_, err := fmt.Fprintln(w, "cat (coreutils-go) 0.1.0")
-	return err
+func getVersionStr() string {
+	return version.Format("cat")
 }
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	opts, files, action, err := parseArgs(args)
 	if err != nil {
-		fmt.Fprintf(stderr, "cat: %v\nTry 'cat --help' for more information.\n", err)
+		fmt.Fprintf(stderr, "%v\nTry 'cat --help' for more information.\n", err)
 		return 1
 	}
 
 	switch action {
 	case ActionVersion:
-		_ = printVersion(stdout)
+		if _, err := fmt.Fprintln(stdout, getVersionStr()); err != nil && !ioutils.IsBrokenPipe(err) {
+			return 1
+		}
 		return 0
 	case ActionHelp:
-		fmt.Fprint(stdout, printHelp())
+		if _, err := fmt.Fprint(stdout, getHelpStr()); err != nil && !ioutils.IsBrokenPipe(err) {
+			return 1
+		}
 		return 0
 	case ActionRun:
 		pipeline := newFormatPipeline(opts)
@@ -162,13 +149,13 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		for _, filename := range files {
 			err := processFile(filename, stdin, stdout, opts, &state, pipeline, writer)
 			if err != nil {
-				if isBrokenPipe(err) {
+				if ioutils.IsBrokenPipe(err) {
 					break
 				}
 				fmt.Fprintf(stderr, "cat: %s: %v\n", filename, err)
 				hasError = true
 			}
-			if err := writer.Flush(); err != nil && isBrokenPipe(err) {
+			if err := writer.Flush(); err != nil && ioutils.IsBrokenPipe(err) {
 				break
 			}
 		}
