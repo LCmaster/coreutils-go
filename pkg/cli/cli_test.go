@@ -316,5 +316,109 @@ func TestCommand_Execute(t *testing.T) {
 	}
 }
 
+func TestCommand_HybridOptions(t *testing.T) {
+	cmd := NewCommand("hybrid", "hybrid [OPTIONS]")
+
+	// 1. Direct AddBool, AddString, AddInt with defaults
+	cmd.AddBool('v', "verbose", "verbose output")
+	cmd.AddBoolDefault('d', "dry-run", "dry run", true)
+	cmd.AddString('o', "output", "output target")
+	cmd.AddStringDefault('f', "format", "FMT", "output format", "text")
+	cmd.AddInt('n', "count", "iteration count")
+	cmd.AddIntDefault('p', "port", "PORT", "service port", 8080)
+
+	// Verify defaults before parse
+	if !cmd.Bool("dry-run") || !cmd.Bool("d") {
+		t.Errorf("expected dry-run default true, got %v", cmd.Bool("dry-run"))
+	}
+	if cmd.String("format") != "text" || cmd.String("f") != "text" {
+		t.Errorf("expected format default 'text', got %q", cmd.String("format"))
+	}
+	if cmd.Int("port") != 8080 || cmd.Int("p") != 8080 {
+		t.Errorf("expected port default 8080, got %d", cmd.Int("port"))
+	}
+
+	// 2. Parse arguments mutating options
+	err := cmd.Parse([]string{"-v", "-o", "report.json", "--format=json", "-n", "42", "--port=9090"})
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+
+	if !cmd.Bool("verbose") || !cmd.Bool("v") {
+		t.Errorf("expected verbose=true, got %v", cmd.Bool("verbose"))
+	}
+	if cmd.String("output") != "report.json" || cmd.String("o") != "report.json" {
+		t.Errorf("expected output='report.json', got %q", cmd.String("output"))
+	}
+	if cmd.String("format") != "json" || cmd.String("f") != "json" {
+		t.Errorf("expected format='json', got %q", cmd.String("format"))
+	}
+	if cmd.Int("count") != 42 || cmd.Int("n") != 42 {
+		t.Errorf("expected count=42, got %d", cmd.Int("count"))
+	}
+	if cmd.Int("port") != 9090 || cmd.Int("p") != 9090 {
+		t.Errorf("expected port=9090, got %d", cmd.Int("port"))
+	}
+
+	// 3. HasBool, HasString, HasInt
+	if !cmd.HasBool("verbose") || cmd.HasBool("non-existent") {
+		t.Errorf("HasBool check failed")
+	}
+	if !cmd.HasString("format") || cmd.HasString("non-existent") {
+		t.Errorf("HasString check failed")
+	}
+	if !cmd.HasInt("port") || cmd.HasInt("non-existent") {
+		t.Errorf("HasInt check failed")
+	}
+
+	// 4. Manual Setters
+	cmd.SetBool("custom-flag", true)
+	if !cmd.Bool("custom-flag") || !cmd.Options.Bools["custom-flag"] {
+		t.Errorf("SetBool failed")
+	}
+
+	cmd.SetString("custom-str", "hello")
+	if cmd.String("custom-str") != "hello" || cmd.Options.Strings["custom-str"] != "hello" {
+		t.Errorf("SetString failed")
+	}
+
+	cmd.SetInt("custom-int", 123)
+	if cmd.Int("custom-int") != 123 || cmd.Options.Ints["custom-int"] != 123 {
+		t.Errorf("SetInt failed")
+	}
+
+	// 5. Pointer-based BoolVar, StringVar, IntVar also tracking in Options
+	var flagBool bool
+	var flagStr string
+	var flagInt int
+	cmd2 := NewCommand("ptr-test")
+	cmd2.BoolVar(&flagBool, 'b', "bool-flag", "flag")
+	cmd2.StringVar(&flagStr, 's', "str-flag", "str")
+	cmd2.IntVar(&flagInt, 'i', "int-flag", "int")
+
+	err = cmd2.Parse([]string{"-b", "--str-flag=val", "-i", "100"})
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	if !flagBool || !cmd2.Bool("bool-flag") || !cmd2.Bool("b") {
+		t.Errorf("BoolVar hybrid sync failed")
+	}
+	if flagStr != "val" || cmd2.String("str-flag") != "val" || cmd2.String("s") != "val" {
+		t.Errorf("StringVar hybrid sync failed")
+	}
+	if flagInt != 100 || cmd2.Int("int-flag") != 100 || cmd2.Int("i") != 100 {
+		t.Errorf("IntVar hybrid sync failed")
+	}
+
+	// 6. Invalid integer argument returns error
+	cmd3 := NewCommand("int-err")
+	cmd3.AddInt('n', "num", "number")
+	err = cmd3.Parse([]string{"-n", "not-a-number"})
+	if err == nil {
+		t.Errorf("expected error for invalid integer argument, got nil")
+	}
+}
+
+
 
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/LCmaster/coreutils-go/pkg/ioutils"
@@ -17,9 +18,48 @@ var ErrExitFailure = errors.New("exit status 1")
 // RunFunc defines the execution logic for a command.
 type RunFunc func(cmd *Command, stdin io.Reader, stdout, stderr io.Writer) error
 
-
 // ErrorHandlerFunc defines custom error handling when parsing fails.
 type ErrorHandlerFunc func(cmd *Command, stderr io.Writer, err error) int
+
+// Options holds primitive option values managed directly by a Command.
+type Options struct {
+	Bools   map[string]bool
+	Strings map[string]string
+	Ints    map[string]int
+}
+
+// NewOptions creates an initialized Options container.
+func NewOptions() *Options {
+	return &Options{
+		Bools:   make(map[string]bool),
+		Strings: make(map[string]string),
+		Ints:    make(map[string]int),
+	}
+}
+
+// Bool returns the boolean value of an option by name, or false if not present.
+func (o *Options) Bool(name string) bool {
+	if o == nil || o.Bools == nil {
+		return false
+	}
+	return o.Bools[name]
+}
+
+// String returns the string value of an option by name, or empty string if not present.
+func (o *Options) String(name string) string {
+	if o == nil || o.Strings == nil {
+		return ""
+	}
+	return o.Strings[name]
+}
+
+// Int returns the integer value of an option by name, or 0 if not present.
+func (o *Options) Int(name string) int {
+	if o == nil || o.Ints == nil {
+		return 0
+	}
+	return o.Ints[name]
+}
 
 // Command is the primary entrypoint and aggregate root for defining CLI tools.
 // It coordinates command metadata (CmdHelper), flag specifications (FlagSet),
@@ -34,6 +74,7 @@ type Command struct {
 	Helper     CmdHelper
 	Flags      *FlagSet
 	Config     Config
+	Options    *Options
 	Run        RunFunc
 	OnError    ErrorHandlerFunc
 	versionStr string
@@ -45,7 +86,6 @@ type Command struct {
 	stderr    io.Writer
 	LastError error
 }
-
 
 // NewCommand creates a new Command initialized with the given name and optional usage synopses.
 func NewCommand(name string, usage ...string) *Command {
@@ -62,10 +102,11 @@ func NewCommandWithConfig(name string, cfg Config, usage ...string) *Command {
 		usage = []string{name + " [OPTION]..."}
 	}
 	return &Command{
-		Name:   name,
-		Helper: CmdHelper{Name: name, Usage: usage},
-		Flags:  NewFlagSet(),
-		Config: cfg,
+		Name:    name,
+		Helper:  CmdHelper{Name: name, Usage: usage},
+		Flags:   NewFlagSet(),
+		Config:  cfg,
+		Options: NewOptions(),
 	}
 }
 
@@ -185,18 +226,196 @@ func (c *Command) HandleAction(w io.Writer) (bool, error) {
 	}
 }
 
-// BoolVar registers a boolean flag. If the flag is supplied, *ptr is set to true.
-func (c *Command) BoolVar(ptr *bool, short rune, long, description string) {
+func (c *Command) ensureOptions() {
+	if c.Options == nil {
+		c.Options = NewOptions()
+	}
+}
+
+// Bool returns the boolean value of the option with the given name.
+func (c *Command) Bool(name string) bool {
+	return c.Options.Bool(name)
+}
+
+// String returns the string value of the option with the given name.
+func (c *Command) String(name string) string {
+	return c.Options.String(name)
+}
+
+// Int returns the integer value of the option with the given name.
+func (c *Command) Int(name string) int {
+	return c.Options.Int(name)
+}
+
+// HasBool reports whether the boolean option has been explicitly recorded.
+func (c *Command) HasBool(name string) bool {
+	if c.Options == nil || c.Options.Bools == nil {
+		return false
+	}
+	_, ok := c.Options.Bools[name]
+	return ok
+}
+
+// HasString reports whether the string option has been explicitly recorded.
+func (c *Command) HasString(name string) bool {
+	if c.Options == nil || c.Options.Strings == nil {
+		return false
+	}
+	_, ok := c.Options.Strings[name]
+	return ok
+}
+
+// HasInt reports whether the integer option has been explicitly recorded.
+func (c *Command) HasInt(name string) bool {
+	if c.Options == nil || c.Options.Ints == nil {
+		return false
+	}
+	_, ok := c.Options.Ints[name]
+	return ok
+}
+
+// SetBool sets the boolean value of an option by name.
+func (c *Command) SetBool(name string, val bool) {
+	c.ensureOptions()
+	c.Options.Bools[name] = val
+}
+
+// SetString sets the string value of an option by name.
+func (c *Command) SetString(name string, val string) {
+	c.ensureOptions()
+	c.Options.Strings[name] = val
+}
+
+// SetInt sets the integer value of an option by name.
+func (c *Command) SetInt(name string, val int) {
+	c.ensureOptions()
+	c.Options.Ints[name] = val
+}
+
+func (c *Command) recordBool(short rune, long string, val bool) {
+	c.ensureOptions()
+	if long != "" {
+		c.Options.Bools[long] = val
+	}
+	if short != 0 {
+		c.Options.Bools[string(short)] = val
+	}
+}
+
+func (c *Command) recordString(short rune, long string, val string) {
+	c.ensureOptions()
+	if long != "" {
+		c.Options.Strings[long] = val
+	}
+	if short != 0 {
+		c.Options.Strings[string(short)] = val
+	}
+}
+
+func (c *Command) recordInt(short rune, long string, val int) {
+	c.ensureOptions()
+	if long != "" {
+		c.Options.Ints[long] = val
+	}
+	if short != 0 {
+		c.Options.Ints[string(short)] = val
+	}
+}
+
+// AddBool registers a boolean flag managed in c.Options.
+func (c *Command) AddBool(short rune, long, description string) {
+	c.AddBoolDefault(short, long, description, false)
+}
+
+// AddBoolDefault registers a boolean flag with an initial default value.
+func (c *Command) AddBoolDefault(short rune, long, description string, defaultVal bool) {
+	c.recordBool(short, long, defaultVal)
 	c.FlagFunc(short, long, description, false, func(_ string) error {
-		*ptr = true
+		c.recordBool(short, long, true)
 		return nil
 	})
 }
 
-// StringVar registers a string option that requires an argument.
+// AddString registers a string flag requiring an argument, managed in c.Options.
+func (c *Command) AddString(short rune, long, description string) {
+	c.AddStringDefault(short, long, "ARG", description, "")
+}
+
+// AddStringDefault registers a string flag requiring an argument with a default value.
+func (c *Command) AddStringDefault(short rune, long, argName, description, defaultVal string) {
+	c.recordString(short, long, defaultVal)
+	if argName == "" {
+		argName = "ARG"
+	}
+	c.FlagArgFunc(short, long, argName, description, func(val string) error {
+		c.recordString(short, long, val)
+		return nil
+	})
+}
+
+// AddInt registers an integer flag requiring an argument, managed in c.Options.
+func (c *Command) AddInt(short rune, long, description string) {
+	c.AddIntDefault(short, long, "NUM", description, 0)
+}
+
+// AddIntDefault registers an integer flag requiring an argument with a default value.
+func (c *Command) AddIntDefault(short rune, long, argName, description string, defaultVal int) {
+	c.recordInt(short, long, defaultVal)
+	if argName == "" {
+		argName = "NUM"
+	}
+	c.FlagArgFunc(short, long, argName, description, func(val string) error {
+		n, err := strconv.Atoi(val)
+		if err != nil {
+			return fmt.Errorf("invalid integer argument: %s", val)
+		}
+		c.recordInt(short, long, n)
+		return nil
+	})
+}
+
+// BoolVar registers a boolean flag bound to an external pointer and tracked in c.Options.
+func (c *Command) BoolVar(ptr *bool, short rune, long, description string) {
+	if ptr != nil {
+		c.recordBool(short, long, *ptr)
+	}
+	c.FlagFunc(short, long, description, false, func(_ string) error {
+		if ptr != nil {
+			*ptr = true
+		}
+		c.recordBool(short, long, true)
+		return nil
+	})
+}
+
+// StringVar registers a string option bound to an external pointer and tracked in c.Options.
 func (c *Command) StringVar(ptr *string, short rune, long, description string) {
+	if ptr != nil {
+		c.recordString(short, long, *ptr)
+	}
 	c.FlagArgFunc(short, long, "ARG", description, func(val string) error {
-		*ptr = val
+		if ptr != nil {
+			*ptr = val
+		}
+		c.recordString(short, long, val)
+		return nil
+	})
+}
+
+// IntVar registers an integer option bound to an external pointer and tracked in c.Options.
+func (c *Command) IntVar(ptr *int, short rune, long, description string) {
+	if ptr != nil {
+		c.recordInt(short, long, *ptr)
+	}
+	c.FlagArgFunc(short, long, "NUM", description, func(val string) error {
+		n, err := strconv.Atoi(val)
+		if err != nil {
+			return fmt.Errorf("invalid integer argument: %s", val)
+		}
+		if ptr != nil {
+			*ptr = n
+		}
+		c.recordInt(short, long, n)
 		return nil
 	})
 }
