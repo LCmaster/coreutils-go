@@ -1,13 +1,33 @@
-// Package unescape provides utilities for interpreting escape sequences modeled after GNU coreutils.
-package unescape
+package strutils
 
 import (
 	"strings"
 )
 
-// Unescape parses backslash escape sequences in s according to GNU echo rules.
-// It returns the unescaped string and a boolean indicating whether '\c' was encountered.
-// If halt is true, all subsequent output must cease and trailing newlines must be suppressed.
+// Unescape parses backslash escape sequences in string s according to GNU `echo -e` rules.
+//
+// Supported escape sequences:
+//   - `\\`   : literal backslash
+//   - `\a`   : alert (BEL, ASCII 7)
+//   - `\b`   : backspace (ASCII 8)
+//   - `\c`   : produce no further output and suppress any trailing newline
+//   - `\e`   : escape (ESC, ASCII 27 / 0x1B)
+//   - `\f`   : form feed (ASCII 12)
+//   - `\n`   : new line (LF, ASCII 10)
+//   - `\r`   : carriage return (CR, ASCII 13)
+//   - `\t`   : horizontal tab (ASCII 9)
+//   - `\v`   : vertical tab (ASCII 11)
+//   - `\0NNN`: byte with octal value NNN (0 to 3 octal digits following '0')
+//   - `\xHH` : byte with hexadecimal value HH (1 to 2 hexadecimal digits)
+//
+// Unrecognized escape sequences (e.g. `\z`) are output literally as the backslash
+// followed by the character (e.g. `\z`). If a trailing backslash occurs at the end
+// of the string without a following character, it is treated as a literal backslash.
+//
+// Return values:
+//   - out : the unescaped string constructed up to the point of completion or early halt.
+//   - halt: true if the `\c` escape was encountered, signaling that all subsequent
+//     output processing must stop immediately and trailing newlines must be omitted.
 func Unescape(s string) (string, bool) {
 	var buf strings.Builder
 	buf.Grow(len(s))

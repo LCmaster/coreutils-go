@@ -1,4 +1,4 @@
-package unescape
+package strutils
 
 import (
 	"testing"
