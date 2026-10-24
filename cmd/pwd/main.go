@@ -27,12 +27,7 @@ func newCommand() *cli.Command {
 	})
 
 	cmd.Run = func(c *cli.Command, _ io.Reader, stdout, stderr io.Writer) error {
-		mode := LogicalMode
-		if c.Options.Bools["physical"] {
-			mode = PhysicalMode
-		}
-
-		path, err := resolveWorkingDir(mode)
+		path, err := resolveWorkingDir(c.Options.Bool("physical"))
 		if err != nil {
 			fmt.Fprintf(stderr, "pwd: %v\n", err)
 			return err

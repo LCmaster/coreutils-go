@@ -5,13 +5,6 @@ import (
 	"path/filepath"
 )
 
-type ResolutionMode int
-
-const (
-	LogicalMode ResolutionMode = iota
-	PhysicalMode
-)
-
 func resolvePhysicalDir() (string, error) {
 	path, err := os.Getwd()
 	if err != nil {
@@ -32,8 +25,8 @@ func resolveLogicalDir() (string, error) {
 	return resolvePhysicalDir()
 }
 
-func resolveWorkingDir(mode ResolutionMode) (string, error) {
-	if mode == PhysicalMode {
+func resolveWorkingDir(physical bool) (string, error) {
+	if physical {
 		return resolvePhysicalDir()
 	}
 	return resolveLogicalDir()

@@ -238,13 +238,13 @@ func TestUnit_ResolveLogicalDir(t *testing.T) {
 }
 
 func TestUnit_ResolveWorkingDir(t *testing.T) {
-	logical, err := resolveWorkingDir(LogicalMode)
+	logical, err := resolveWorkingDir(false)
 	if err != nil {
-		t.Fatalf("resolveWorkingDir(LogicalMode) error: %v", err)
+		t.Fatalf("resolveWorkingDir(false) error: %v", err)
 	}
-	physical, err := resolveWorkingDir(PhysicalMode)
+	physical, err := resolveWorkingDir(true)
 	if err != nil {
-		t.Fatalf("resolveWorkingDir(PhysicalMode) error: %v", err)
+		t.Fatalf("resolveWorkingDir(true) error: %v", err)
 	}
 	if logical == "" || physical == "" {
 		t.Error("working directory should not be empty")
