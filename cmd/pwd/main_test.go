@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/LCmaster/coreutils-go/pkg/cli"
 	"github.com/LCmaster/coreutils-go/pkg/fsutils"
 )
 
@@ -100,7 +101,7 @@ func captureStdout(f func() error) (string, error) {
 // ---------------------------------------------------------------------------
 
 func TestUnit_PrintHelp(t *testing.T) {
-	help := getHelpStr()
+	help := newCommand().Help()
 	for _, expected := range []string{
 		"Usage:",
 		"pwd [OPTION]...",
@@ -112,18 +113,18 @@ func TestUnit_PrintHelp(t *testing.T) {
 		"-v, --version",
 	} {
 		if !strings.Contains(help, expected) {
-			t.Errorf("getHelpStr() missing snippet %q", expected)
+			t.Errorf("cmd.Help() missing snippet %q", expected)
 		}
 	}
 	if !strings.HasSuffix(help, "\n") {
-		t.Error("getHelpStr() should end with a newline")
+		t.Error("cmd.Help() should end with a newline")
 	}
 }
 
 func TestUnit_PrintVersion(t *testing.T) {
-	ver := getVersionStr()
+	ver := newCommand().Version()
 	if ver != "pwd (coreutils-go) 0.1.0" {
-		t.Errorf("getVersionStr() = %q, want 'pwd (coreutils-go) 0.1.0'", ver)
+		t.Errorf("cmd.Version() = %q, want 'pwd (coreutils-go) 0.1.0'", ver)
 	}
 }
 
@@ -254,85 +255,99 @@ func TestUnit_ResolveWorkingDir(t *testing.T) {
 // Unit tests: Option Parsing & Execution Runner
 // ---------------------------------------------------------------------------
 
-func TestUnit_ParseArgs(t *testing.T) {
-	// Default mode is Logical
-	opts, err := parseArgs([]string{})
-	if err != nil || opts.Mode != LogicalMode || opts.Action != ActionRun {
-		t.Errorf("parseArgs([]) = %+v, %v; want LogicalMode, ActionRun", opts, err)
+func TestUnit_Options(t *testing.T) {
+	// Default mode is Logical (physical = false)
+	cmd := newCommand()
+	err := cmd.Parse([]string{})
+	if err != nil || cmd.Options.Bools["physical"] || cmd.Action() != cli.ActionRun {
+		t.Errorf("default parse error=%v, physical=%v, action=%v", err, cmd.Options.Bools["physical"], cmd.Action())
 	}
 
 	// -L flag
-	opts, err = parseArgs([]string{"-L"})
-	if err != nil || opts.Mode != LogicalMode {
-		t.Errorf("parseArgs(-L) = %+v, %v; want LogicalMode", opts, err)
+	cmd = newCommand()
+	err = cmd.Parse([]string{"-L"})
+	if err != nil || cmd.Options.Bools["physical"] {
+		t.Errorf("-L parse error=%v, physical=%v", err, cmd.Options.Bools["physical"])
 	}
 
 	// -P flag
-	opts, err = parseArgs([]string{"-P"})
-	if err != nil || opts.Mode != PhysicalMode {
-		t.Errorf("parseArgs(-P) = %+v, %v; want PhysicalMode", opts, err)
+	cmd = newCommand()
+	err = cmd.Parse([]string{"-P"})
+	if err != nil || !cmd.Options.Bools["physical"] {
+		t.Errorf("-P parse error=%v, physical=%v", err, cmd.Options.Bools["physical"])
 	}
 
 	// Long flags
-	opts, err = parseArgs([]string{"--physical"})
-	if err != nil || opts.Mode != PhysicalMode {
-		t.Errorf("parseArgs(--physical) = %+v, %v; want PhysicalMode", opts, err)
+	cmd = newCommand()
+	err = cmd.Parse([]string{"--physical"})
+	if err != nil || !cmd.Options.Bools["physical"] {
+		t.Errorf("--physical parse error=%v, physical=%v", err, cmd.Options.Bools["physical"])
 	}
 
-	opts, err = parseArgs([]string{"--logical"})
-	if err != nil || opts.Mode != LogicalMode {
-		t.Errorf("parseArgs(--logical) = %+v, %v; want LogicalMode", opts, err)
+	cmd = newCommand()
+	err = cmd.Parse([]string{"--logical"})
+	if err != nil || cmd.Options.Bools["physical"] {
+		t.Errorf("--logical parse error=%v, physical=%v", err, cmd.Options.Bools["physical"])
 	}
 
 	// Precedence: -L then -P -> Physical
-	opts, err = parseArgs([]string{"-L", "-P"})
-	if err != nil || opts.Mode != PhysicalMode {
-		t.Errorf("parseArgs(-L, -P) = %+v, %v; want PhysicalMode", opts, err)
+	cmd = newCommand()
+	err = cmd.Parse([]string{"-L", "-P"})
+	if err != nil || !cmd.Options.Bools["physical"] {
+		t.Errorf("-L -P parse error=%v, physical=%v", err, cmd.Options.Bools["physical"])
 	}
 
 	// Precedence: -P then -L -> Logical
-	opts, err = parseArgs([]string{"-P", "-L"})
-	if err != nil || opts.Mode != LogicalMode {
-		t.Errorf("parseArgs(-P, -L) = %+v, %v; want LogicalMode", opts, err)
+	cmd = newCommand()
+	err = cmd.Parse([]string{"-P", "-L"})
+	if err != nil || cmd.Options.Bools["physical"] {
+		t.Errorf("-P -L parse error=%v, physical=%v", err, cmd.Options.Bools["physical"])
 	}
 
 	// Bundled: -LP -> Physical
-	opts, err = parseArgs([]string{"-LP"})
-	if err != nil || opts.Mode != PhysicalMode {
-		t.Errorf("parseArgs(-LP) = %+v, %v; want PhysicalMode", opts, err)
+	cmd = newCommand()
+	err = cmd.Parse([]string{"-LP"})
+	if err != nil || !cmd.Options.Bools["physical"] {
+		t.Errorf("-LP parse error=%v, physical=%v", err, cmd.Options.Bools["physical"])
 	}
 
 	// Bundled: -PL -> Logical
-	opts, err = parseArgs([]string{"-PL"})
-	if err != nil || opts.Mode != LogicalMode {
-		t.Errorf("parseArgs(-PL) = %+v, %v; want LogicalMode", opts, err)
+	cmd = newCommand()
+	err = cmd.Parse([]string{"-PL"})
+	if err != nil || cmd.Options.Bools["physical"] {
+		t.Errorf("-PL parse error=%v, physical=%v", err, cmd.Options.Bools["physical"])
 	}
 
 	// Help and version
-	opts, err = parseArgs([]string{"-h"})
-	if err != nil || opts.Action != ActionHelp {
-		t.Errorf("parseArgs(-h) = %+v, %v; want ActionHelp", opts, err)
+	cmd = newCommand()
+	err = cmd.Parse([]string{"-h"})
+	if err != nil || cmd.Action() != cli.ActionHelp {
+		t.Errorf("parse(-h) = %v, want ActionHelp", cmd.Action())
 	}
 
-	opts, err = parseArgs([]string{"--version"})
-	if err != nil || opts.Action != ActionVersion {
-		t.Errorf("parseArgs(--version) = %+v, %v; want ActionVersion", opts, err)
+	cmd = newCommand()
+	err = cmd.Parse([]string{"--version"})
+	if err != nil || cmd.Action() != cli.ActionVersion {
+		t.Errorf("parse(--version) = %v, want ActionVersion", cmd.Action())
 	}
 
 	// Double-dash terminates options
-	opts, err = parseArgs([]string{"--", "-P"})
-	if err != nil || opts.Mode != LogicalMode {
-		t.Errorf("parseArgs(--, -P) = %+v, %v; want LogicalMode (default)", opts, err)
+	cmd = newCommand()
+	err = cmd.Parse([]string{"--", "-P"})
+	if err != nil || cmd.Options.Bools["physical"] {
+		t.Errorf("parse(--, -P) physical=%v, want false", cmd.Options.Bools["physical"])
 	}
 
 	// Invalid short flag
-	_, err = parseArgs([]string{"-x"})
+	cmd = newCommand()
+	err = cmd.Parse([]string{"-x"})
 	if err == nil || !strings.Contains(err.Error(), "invalid option -- 'x'") {
 		t.Errorf("expected 'invalid option -- 'x'', got %v", err)
 	}
 
 	// Unrecognized long option
-	_, err = parseArgs([]string{"--invalid-flag"})
+	cmd = newCommand()
+	err = cmd.Parse([]string{"--invalid-flag"})
 	if err == nil || !strings.Contains(err.Error(), "unrecognized option '--invalid-flag'") {
 		t.Errorf("expected 'unrecognized option '--invalid-flag'', got %v", err)
 	}
@@ -341,30 +356,30 @@ func TestUnit_ParseArgs(t *testing.T) {
 func TestUnit_Run(t *testing.T) {
 	// Test Help
 	var outHelp, errHelp bytes.Buffer
-	code := run([]string{"-h"}, nil, &outHelp, &errHelp)
-	if code != 0 || !strings.Contains(outHelp.String(), "Usage:") || errHelp.Len() > 0 {
-		t.Errorf("run(-h) code=%d, stdout=%q, stderr=%q", code, outHelp.String(), errHelp.String())
+	err := newCommand().Execute([]string{"-h"}, nil, &outHelp, &errHelp)
+	if err != nil || !strings.Contains(outHelp.String(), "Usage:") || errHelp.Len() > 0 {
+		t.Errorf("Execute(-h) err=%v, stdout=%q, stderr=%q", err, outHelp.String(), errHelp.String())
 	}
 
 	// Test Version
 	var outVer, errVer bytes.Buffer
-	code = run([]string{"--version"}, nil, &outVer, &errVer)
-	if code != 0 || outVer.String() != "pwd (coreutils-go) 0.1.0\n" || errVer.Len() > 0 {
-		t.Errorf("run(--version) code=%d, stdout=%q, stderr=%q", code, outVer.String(), errVer.String())
+	err = newCommand().Execute([]string{"--version"}, nil, &outVer, &errVer)
+	if err != nil || outVer.String() != "pwd (coreutils-go) 0.1.0\n" || errVer.Len() > 0 {
+		t.Errorf("Execute(--version) err=%v, stdout=%q, stderr=%q", err, outVer.String(), errVer.String())
 	}
 
 	// Test Invalid Option
 	var outInv, errInv bytes.Buffer
-	code = run([]string{"--not-a-flag"}, nil, &outInv, &errInv)
-	if code != 1 || !strings.Contains(errInv.String(), "unrecognized option '--not-a-flag'") {
-		t.Errorf("run(--not-a-flag) code=%d, stderr=%q", code, errInv.String())
+	err = newCommand().Execute([]string{"--not-a-flag"}, nil, &outInv, &errInv)
+	if err == nil || !strings.Contains(errInv.String(), "unrecognized option '--not-a-flag'") {
+		t.Errorf("Execute(--not-a-flag) err=%v, stderr=%q", err, errInv.String())
 	}
 
 	// Test Success Run
 	var outRun, errRun bytes.Buffer
-	code = run([]string{}, nil, &outRun, &errRun)
-	if code != 0 || outRun.Len() == 0 || errRun.Len() > 0 {
-		t.Errorf("run() code=%d, stdout=%q, stderr=%q", code, outRun.String(), errRun.String())
+	err = newCommand().Execute([]string{}, nil, &outRun, &errRun)
+	if err != nil || outRun.Len() == 0 || errRun.Len() > 0 {
+		t.Errorf("Execute() err=%v, stdout=%q, stderr=%q", err, outRun.String(), errRun.String())
 	}
 }
 
@@ -406,8 +421,9 @@ func TestE2E_Help(t *testing.T) {
 			if code != 0 || stderr != "" {
 				t.Fatalf("code=%d, stderr=%q", code, stderr)
 			}
-			if stdout != getHelpStr() {
-				t.Errorf("%s output mismatch:\n got: %q\nwant: %q", flag, stdout, getHelpStr())
+			expectedHelp := newCommand().Help()
+			if stdout != expectedHelp {
+				t.Errorf("%s output mismatch:\n got: %q\nwant: %q", flag, stdout, expectedHelp)
 			}
 		})
 	}
