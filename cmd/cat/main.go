@@ -74,13 +74,13 @@ func newCommand() *cli.Command {
 
 	cmd.Run = func(c *cli.Command, stdin io.Reader, stdout, stderr io.Writer) error {
 		opts := CatOptions{
-			NumberNonBlank:  c.Options.Bools["NumberNonBlank"],
-			Number:          c.Options.Bools["Number"],
-			ShowEnds:        c.Options.Bools["ShowEnds"],
-			ShowTabs:        c.Options.Bools["ShowTabs"],
-			ShowNonPrinting: c.Options.Bools["ShowNonPrinting"],
-			SqueezeBlank:    c.Options.Bools["SqueezeBlank"],
-			Unbuffered:      c.Options.Bools["Unbuffered"],
+			NumberNonBlank:  c.Options.Bool("NumberNonBlank"),
+			Number:          c.Options.Bool("Number"),
+			ShowEnds:        c.Options.Bool("ShowEnds"),
+			ShowTabs:        c.Options.Bool("ShowTabs"),
+			ShowNonPrinting: c.Options.Bool("ShowNonPrinting"),
+			SqueezeBlank:    c.Options.Bool("SqueezeBlank"),
+			Unbuffered:      c.Options.Bool("Unbuffered"),
 		}
 		if opts.NumberNonBlank {
 			opts.Number = false
