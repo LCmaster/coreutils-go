@@ -12,8 +12,6 @@ import (
 )
 
 func newCommand() *cli.Command {
-	var opts CatOptions
-
 	cmd := cli.NewCommand("cat", "cat [OPTION]... [FILE]...")
 	cmd.DisableAutoShortHelp()
 	cmd.SetDefaultOperands("-")
@@ -23,47 +21,47 @@ func newCommand() *cli.Command {
 	cmd.AddExample("cat        Copy standard input to standard output.")
 
 	cmd.FlagFunc('A', "show-all", "equivalent to -vET", false, func(_ string) error {
-		opts.ShowNonPrinting = true
-		opts.ShowEnds = true
-		opts.ShowTabs = true
+		cmd.Options.Bools["ShowNonPrinting"] = true
+		cmd.Options.Bools["ShowEnds"] = true
+		cmd.Options.Bools["ShowTabs"] = true
 		return nil
 	})
 	cmd.FlagFunc('b', "number-nonblank", "number nonempty output lines, overrides -n", false, func(_ string) error {
-		opts.NumberNonBlank = true
+		cmd.Options.Bools["NumberNonBlank"] = true
 		return nil
 	})
 	cmd.FlagFunc('e', "", "equivalent to -vE", false, func(_ string) error {
-		opts.ShowNonPrinting = true
-		opts.ShowEnds = true
+		cmd.Options.Bools["ShowNonPrinting"] = true
+		cmd.Options.Bools["ShowEnds"] = true
 		return nil
 	})
 	cmd.FlagFunc('E', "show-ends", "display $ at end of each line", false, func(_ string) error {
-		opts.ShowEnds = true
+		cmd.Options.Bools["ShowEnds"] = true
 		return nil
 	})
 	cmd.FlagFunc('n', "number", "number all output lines", false, func(_ string) error {
-		opts.Number = true
+		cmd.Options.Bools["Number"] = true
 		return nil
 	})
 	cmd.FlagFunc('s', "squeeze-blank", "suppress repeated empty output lines", false, func(_ string) error {
-		opts.SqueezeBlank = true
+		cmd.Options.Bools["SqueezeBlank"] = true
 		return nil
 	})
 	cmd.FlagFunc('t', "", "equivalent to -vT", false, func(_ string) error {
-		opts.ShowNonPrinting = true
-		opts.ShowTabs = true
+		cmd.Options.Bools["ShowNonPrinting"] = true
+		cmd.Options.Bools["ShowTabs"] = true
 		return nil
 	})
 	cmd.FlagFunc('T', "show-tabs", "display TAB characters as ^I", false, func(_ string) error {
-		opts.ShowTabs = true
+		cmd.Options.Bools["ShowTabs"] = true
 		return nil
 	})
 	cmd.FlagFunc('u', "", "(ignored)", false, func(_ string) error {
-		opts.Unbuffered = true
+		cmd.Options.Bools["Unbuffered"] = true
 		return nil
 	})
 	cmd.FlagFunc('v', "show-nonprinting", "use ^ and M- notation, except for LFD and TAB", false, func(_ string) error {
-		opts.ShowNonPrinting = true
+		cmd.Options.Bools["ShowNonPrinting"] = true
 		return nil
 	})
 
@@ -75,6 +73,15 @@ func newCommand() *cli.Command {
 	}
 
 	cmd.Run = func(c *cli.Command, stdin io.Reader, stdout, stderr io.Writer) error {
+		opts := CatOptions{
+			NumberNonBlank:  c.Options.Bools["NumberNonBlank"],
+			Number:          c.Options.Bools["Number"],
+			ShowEnds:        c.Options.Bools["ShowEnds"],
+			ShowTabs:        c.Options.Bools["ShowTabs"],
+			ShowNonPrinting: c.Options.Bools["ShowNonPrinting"],
+			SqueezeBlank:    c.Options.Bools["SqueezeBlank"],
+			Unbuffered:      c.Options.Bools["Unbuffered"],
+		}
 		if opts.NumberNonBlank {
 			opts.Number = false
 		}
