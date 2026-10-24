@@ -1,5 +1,5 @@
 // Package cli provides a lightweight, zero-dependency POSIX and GNU compliant
-// command-line option parser for the coreutils-go suite.
+// command-line argument parser for the coreutils-go suite.
 package cli
 
 import (
@@ -19,97 +19,43 @@ const (
 	ActionVersion
 )
 
-// Flag represents a command-line flag specification.
-type Flag struct {
-	Short       rune
-	Long        string
-	Description string
-	TakesArg    bool
-	Handler     func(val string) error
-}
-
-// Parser parses command line arguments according to POSIX and GNU coreutils conventions.
+// Parser is a pure argument token parsing engine.
+// It parses an argument list against a FlagSet and Config without any knowledge
+// of documentation, usage synopses, or help presentation.
 type Parser struct {
-	Name             string
-	Usage            string
-	flags            []*Flag
-	shortMap         map[rune]*Flag
-	longMap          map[string]*Flag
-	numericShorthand func(num string) error
-	numericErrFormat string
-	defaultOperands  []string
-	hasAutoHelp      bool
-	hasAutoShortHelp bool
-	hasAutoVersion   bool
+	name     string // used for diagnostics matching GNU format: "<name>: invalid option -- 'x'"
+	flags    *FlagSet
+	config   Config
+	operands []string
+	action   Action
 }
 
-// NewParser creates a new CLI parser initialized with standard GNU defaults.
-func NewParser(name, usage string) *Parser {
+// NewParser creates a new pure argument parser instance.
+func NewParser(name string, flags *FlagSet, config Config) *Parser {
+	if flags == nil {
+		flags = NewFlagSet()
+	}
 	return &Parser{
-		Name:             name,
-		Usage:            usage,
-		shortMap:         make(map[rune]*Flag),
-		longMap:          make(map[string]*Flag),
-		hasAutoHelp:      true,
-		hasAutoShortHelp: true,
-		hasAutoVersion:   true,
-		numericErrFormat: "%s: invalid number: '%s'",
+		name:   name,
+		flags:  flags,
+		config: config,
+		action: ActionRun,
 	}
 }
 
-// DisableAutoShortHelp disables treating -h as an automatic help option,
-// while preserving --help (e.g. for GNU cat).
-func (p *Parser) DisableAutoShortHelp() {
-	p.hasAutoShortHelp = false
+// Operands returns positional operands collected during Parse.
+func (p *Parser) Operands() []string {
+	return p.operands
 }
 
-// BoolVar registers a boolean flag. If the flag is supplied, *ptr is set to true.
-func (p *Parser) BoolVar(ptr *bool, short rune, long, description string) {
-	p.FlagFunc(short, long, description, false, func(_ string) error {
-		*ptr = true
-		return nil
-	})
+// Args is an alias for Operands matching Go standard library conventions.
+func (p *Parser) Args() []string {
+	return p.operands
 }
 
-// StringVar registers a string option that requires an argument.
-func (p *Parser) StringVar(ptr *string, short rune, long, description string) {
-	p.FlagFunc(short, long, description, true, func(val string) error {
-		*ptr = val
-		return nil
-	})
-}
-
-// FlagFunc registers a custom flag with an evaluation callback.
-func (p *Parser) FlagFunc(short rune, long, description string, takesArg bool, handler func(val string) error) {
-	f := &Flag{
-		Short:       short,
-		Long:        long,
-		Description: description,
-		TakesArg:    takesArg,
-		Handler:     handler,
-	}
-	p.flags = append(p.flags, f)
-	if short != 0 {
-		p.shortMap[short] = f
-	}
-	if long != "" {
-		p.longMap[long] = f
-	}
-}
-
-// EnableNumericShorthand enables parsing of legacy numeric options (e.g. -5, -20)
-// commonly supported by utilities like head and tail.
-func (p *Parser) EnableNumericShorthand(errFormat string, handler func(num string) error) {
-	p.numericShorthand = handler
-	if errFormat != "" {
-		p.numericErrFormat = errFormat
-	}
-}
-
-// SetDefaultOperands sets default operands to use when no positional arguments are given
-// (e.g. []string{"-"} for stdin-default tools).
-func (p *Parser) SetDefaultOperands(operands ...string) {
-	p.defaultOperands = operands
+// Action returns the action determined by Parse (ActionRun, ActionHelp, or ActionVersion).
+func (p *Parser) Action() Action {
+	return p.action
 }
 
 func isNumeric(s string) bool {
@@ -131,7 +77,39 @@ func isNumeric(s string) bool {
 //   - Stops option processing upon encountering "--".
 //   - Treats single "-" as a regular positional operand (representing standard input).
 //   - Formats error messages matching GNU coreutils diagnostics.
-func (p *Parser) Parse(args []string) ([]string, Action, error) {
+func (p *Parser) Parse(args []string) error {
+	p.operands = nil
+	p.action = ActionRun
+
+	if p.config.SoleArgumentHelpVersion {
+		if len(args) == 1 {
+			switch args[0] {
+			case "--help":
+				if p.config.AutoHelp {
+					p.action = ActionHelp
+					return nil
+				}
+			case "-h":
+				if p.config.AutoHelp && p.config.AutoShortHelp {
+					p.action = ActionHelp
+					return nil
+				}
+			case "--version":
+				if p.config.AutoVersion {
+					p.action = ActionVersion
+					return nil
+				}
+			case "-v":
+				if p.config.AutoVersion && p.config.AutoShortVersion {
+					p.action = ActionVersion
+					return nil
+				}
+			}
+		}
+		p.operands = args
+		return nil
+	}
+
 	var operands []string
 	var endOfOptions bool
 
@@ -144,19 +122,27 @@ func (p *Parser) Parse(args []string) ([]string, Action, error) {
 		}
 
 		if arg == "--" {
+			if p.config.StopOnUnknown {
+				operands = append(operands, args[i:]...)
+				break
+			}
 			endOfOptions = true
 			continue
 		}
 
 		if arg == "-" || !strings.HasPrefix(arg, "-") {
+			if p.config.StopOnUnknown {
+				operands = append(operands, args[i:]...)
+				break
+			}
 			operands = append(operands, arg)
 			continue
 		}
 
 		// Legacy numeric option (e.g. -5, -20)
-		if p.numericShorthand != nil && isNumeric(arg) {
-			if err := p.numericShorthand(arg[1:]); err != nil {
-				return nil, ActionRun, fmt.Errorf(p.numericErrFormat, p.Name, arg[1:])
+		if p.config.NumericShorthand != nil && isNumeric(arg) {
+			if err := p.config.NumericShorthand(arg[1:]); err != nil {
+				return fmt.Errorf(p.config.NumericErrFormat, p.name, arg[1:])
 			}
 			continue
 		}
@@ -173,35 +159,50 @@ func (p *Parser) Parse(args []string) ([]string, Action, error) {
 				hasVal = true
 			}
 
-			if name == "help" && p.hasAutoHelp && p.longMap["help"] == nil {
-				return nil, ActionHelp, nil
+			flag, exists := p.flags.LookupLong(name)
+
+			if name == "help" && p.config.AutoHelp && !exists {
+				if p.config.StopOnUnknown && i > 0 {
+					operands = append(operands, args[i:]...)
+					break
+				}
+				p.action = ActionHelp
+				return nil
 			}
-			if name == "version" && p.hasAutoVersion && p.longMap["version"] == nil {
-				return nil, ActionVersion, nil
+			if name == "version" && p.config.AutoVersion && !exists {
+				if p.config.StopOnUnknown && i > 0 {
+					operands = append(operands, args[i:]...)
+					break
+				}
+				p.action = ActionVersion
+				return nil
 			}
 
-			flag, exists := p.longMap[name]
 			if !exists {
-				return nil, ActionRun, fmt.Errorf("%s: unrecognized option '--%s'", p.Name, name)
+				if p.config.StopOnUnknown {
+					operands = append(operands, args[i:]...)
+					break
+				}
+				return fmt.Errorf("%s: unrecognized option '--%s'", p.name, name)
 			}
 
 			if flag.TakesArg {
 				if !hasVal {
 					if i+1 >= len(args) {
-						return nil, ActionRun, fmt.Errorf("%s: option '--%s' requires an argument", p.Name, name)
+						return fmt.Errorf("%s: option '--%s' requires an argument", p.name, name)
 					}
 					i++
 					val = args[i]
 				}
 				if err := flag.Handler(val); err != nil {
-					return nil, ActionRun, err
+					return err
 				}
 			} else {
 				if hasVal {
-					return nil, ActionRun, fmt.Errorf("%s: option '--%s' doesn't allow an argument", p.Name, name)
+					return fmt.Errorf("%s: option '--%s' doesn't allow an argument", p.name, name)
 				}
 				if err := flag.Handler(""); err != nil {
-					return nil, ActionRun, err
+					return err
 				}
 			}
 			continue
@@ -209,46 +210,80 @@ func (p *Parser) Parse(args []string) ([]string, Action, error) {
 
 		// Short option cluster (-x, -qv, -n10, -n-5)
 		runes := []rune(arg[1:])
+
+		if p.config.StopOnUnknown {
+			allKnown := true
+			for _, r := range runes {
+				if _, ok := p.flags.LookupShort(r); !ok {
+					if !(r == 'h' && p.config.AutoHelp && p.config.AutoShortHelp) &&
+						!(r == 'v' && p.config.AutoVersion && p.config.AutoShortVersion) {
+						allKnown = false
+						break
+					}
+				}
+			}
+			if !allKnown {
+				operands = append(operands, args[i:]...)
+				break
+			}
+		}
+
 		for j := 0; j < len(runes); j++ {
 			r := runes[j]
 
 			// Registered flags take priority over auto help/version
-			flag, exists := p.shortMap[r]
+			flag, exists := p.flags.LookupShort(r)
 			if !exists {
-				if r == 'h' && p.hasAutoHelp && p.hasAutoShortHelp {
-					return nil, ActionHelp, nil
+				if r == 'h' && p.config.AutoHelp && p.config.AutoShortHelp {
+					if p.config.StopOnUnknown && i > 0 {
+						operands = append(operands, args[i:]...)
+						break
+					}
+					p.action = ActionHelp
+					return nil
 				}
-				return nil, ActionRun, fmt.Errorf("%s: invalid option -- '%c'", p.Name, r)
+				if r == 'v' && p.config.AutoVersion && p.config.AutoShortVersion {
+					if p.config.StopOnUnknown && i > 0 {
+						operands = append(operands, args[i:]...)
+						break
+					}
+					p.action = ActionVersion
+					return nil
+				}
+				if p.config.StopOnUnknown {
+					operands = append(operands, args[i:]...)
+					break
+				}
+				return fmt.Errorf("%s: invalid option -- '%c'", p.name, r)
 			}
 
 			if flag.TakesArg {
 				var val string
 				if j+1 < len(runes) {
-					// Attached value: e.g. -n10 or -n-5
 					val = string(runes[j+1:])
 				} else {
-					// Separate argument: e.g. -n 10
 					if i+1 >= len(args) {
-						return nil, ActionRun, fmt.Errorf("%s: option requires an argument -- '%c'", p.Name, r)
+						return fmt.Errorf("%s: option requires an argument -- '%c'", p.name, r)
 					}
 					i++
 					val = args[i]
 				}
 				if err := flag.Handler(val); err != nil {
-					return nil, ActionRun, err
+					return err
 				}
 				break
 			} else {
 				if err := flag.Handler(""); err != nil {
-					return nil, ActionRun, err
+					return err
 				}
 			}
 		}
 	}
 
-	if len(operands) == 0 && len(p.defaultOperands) > 0 {
-		operands = append(operands, p.defaultOperands...)
+	if len(operands) == 0 && len(p.config.DefaultOperands) > 0 {
+		operands = append(operands, p.config.DefaultOperands...)
 	}
 
-	return operands, ActionRun, nil
+	p.operands = operands
+	return nil
 }

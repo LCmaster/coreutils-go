@@ -129,3 +129,49 @@ func FormatHelp(cfg HelpConfig) string {
 
 	return b.String()
 }
+
+// CmdHelper manages command documentation and formats standardized GNU help manuals.
+type CmdHelper struct {
+	Name        string
+	Usage       []string
+	Description string
+	Notes       string
+	Examples    []string
+	ExtraFlags  []HelpOption // For synthetic or non-parsed flags (e.g. legacy options or manual help entries)
+}
+
+// SetUsage sets or replaces the usage synopsis lines.
+func (h *CmdHelper) SetUsage(usage ...string) {
+	h.Usage = usage
+}
+
+// SetDescription sets the command description.
+func (h *CmdHelper) SetDescription(desc string) {
+	h.Description = desc
+}
+
+// SetNotes sets notes / format descriptions.
+func (h *CmdHelper) SetNotes(notes string) {
+	h.Notes = notes
+}
+
+// AddExample adds an example usage line.
+func (h *CmdHelper) AddExample(example string) {
+	h.Examples = append(h.Examples, example)
+}
+
+// Format renders the complete help manual using the provided options slice.
+func (h CmdHelper) Format(options []HelpOption) string {
+	allOptions := make([]HelpOption, 0, len(options)+len(h.ExtraFlags))
+	allOptions = append(allOptions, options...)
+	allOptions = append(allOptions, h.ExtraFlags...)
+
+	return FormatHelp(HelpConfig{
+		Usage:       h.Usage,
+		Description: h.Description,
+		Options:     allOptions,
+		Notes:       h.Notes,
+		Examples:    h.Examples,
+	})
+}
+
