@@ -521,7 +521,7 @@ func TestEcho_HelpFlag(t *testing.T) {
 }
 
 func TestUnit_PrintHelp(t *testing.T) {
-	help := getHelpStr()
+	help := newCommand().Help()
 	expectedSubstrings := []string{
 		"Usage:",
 		"echo [OPTIONS]... [STRING]...",
@@ -534,17 +534,18 @@ func TestUnit_PrintHelp(t *testing.T) {
 
 	for _, sub := range expectedSubstrings {
 		if !strings.Contains(help, sub) {
-			t.Errorf("printHelp() missing expected substring %q", sub)
+			t.Errorf("cmd.Help() missing expected substring %q", sub)
 		}
 	}
 }
 
 func TestUnit_PrintVersion(t *testing.T) {
-	ver := getVersionStr()
+	ver := newCommand().Version()
 	if ver != "echo (coreutils-go) 0.1.0" {
 		t.Errorf("expected 'echo (coreutils-go) 0.1.0', got %q", ver)
 	}
 }
+
 
 
 func TestUnit_FormatEcho(t *testing.T) {
@@ -612,3 +613,28 @@ func TestUnit_Transformers(t *testing.T) {
 		t.Errorf("EscapeTransformer with \\c failed: got (%q, %v)", out, halt)
 	}
 }
+
+func TestUnit_Run(t *testing.T) {
+	// Help
+	var outHelp, errHelp bytes.Buffer
+	err := newCommand().Execute([]string{"--help"}, nil, &outHelp, &errHelp)
+	if err != nil || !strings.Contains(outHelp.String(), "Usage:") {
+		t.Errorf("Execute(--help) err=%v, stdout=%q", err, outHelp.String())
+	}
+
+	// Version
+	var outVer, errVer bytes.Buffer
+	err = newCommand().Execute([]string{"--version"}, nil, &outVer, &errVer)
+	if err != nil || !strings.Contains(outVer.String(), "echo (coreutils-go) 0.1.0") {
+		t.Errorf("Execute(--version) err=%v, stdout=%q", err, outVer.String())
+	}
+
+	// Normal run
+	var outRun, errRun bytes.Buffer
+	err = newCommand().Execute([]string{"-n", "foo", "bar"}, nil, &outRun, &errRun)
+	if err != nil || outRun.String() != "foo bar" {
+		t.Errorf("Execute(-n foo bar) err=%v, stdout=%q", err, outRun.String())
+	}
+}
+
+
