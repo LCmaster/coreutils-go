@@ -18,6 +18,7 @@ func TestIsBrokenPipe(t *testing.T) {
 		{"wrapped EPIPE", errors.Join(errors.New("write failure"), syscall.EPIPE), true},
 		{"text broken pipe", errors.New("write: broken pipe"), true},
 		{"text uppercase BROKEN PIPE", errors.New("BROKEN PIPE"), true},
+		{"windows pipe ended", errors.New("write /dev/stdout: The pipe has been ended."), true},
 	}
 
 	for _, tt := range tests {

@@ -90,9 +90,6 @@ type Command struct {
 // NewCommand creates a new Command initialized with the given name and optional usage synopses.
 func NewCommand(name string, usage ...string) *Command {
 	cfg := DefaultConfig()
-	if name == "true" || name == "false" {
-		cfg = TrueConfig()
-	}
 	return NewCommandWithConfig(name, cfg, usage...)
 }
 
@@ -295,7 +292,9 @@ func (c *Command) SetInt(name string, val int) {
 func (c *Command) recordBool(short rune, long string, val bool) {
 	c.ensureOptions()
 	if long != "" {
-		c.Options.Bools[long] = val
+		for _, name := range splitLongNames(long) {
+			c.Options.Bools[name] = val
+		}
 	}
 	if short != 0 {
 		c.Options.Bools[string(short)] = val
@@ -305,7 +304,9 @@ func (c *Command) recordBool(short rune, long string, val bool) {
 func (c *Command) recordString(short rune, long string, val string) {
 	c.ensureOptions()
 	if long != "" {
-		c.Options.Strings[long] = val
+		for _, name := range splitLongNames(long) {
+			c.Options.Strings[name] = val
+		}
 	}
 	if short != 0 {
 		c.Options.Strings[string(short)] = val
@@ -315,7 +316,9 @@ func (c *Command) recordString(short rune, long string, val string) {
 func (c *Command) recordInt(short rune, long string, val int) {
 	c.ensureOptions()
 	if long != "" {
-		c.Options.Ints[long] = val
+		for _, name := range splitLongNames(long) {
+			c.Options.Ints[name] = val
+		}
 	}
 	if short != 0 {
 		c.Options.Ints[string(short)] = val
@@ -431,9 +434,11 @@ func (c *Command) FlagFunc(short rune, long, description string, takesArg bool, 
 
 // FlagArgFunc registers a custom flag with an argument placeholder name for help output.
 func (c *Command) FlagArgFunc(short rune, long, argName, description string, handler func(val string) error) {
+	longNames := splitLongNames(long)
+	normalizedLong := strings.Join(longNames, ", ")
 	c.Flags.Add(&Flag{
 		Short:       short,
-		Long:        long,
+		Long:        normalizedLong,
 		ArgName:     argName,
 		Description: description,
 		TakesArg:    argName != "",
@@ -463,7 +468,6 @@ func (c *Command) EnableAutoShortVersion() {
 func (c *Command) DisableAutoShortVersion() {
 	c.Config.AutoShortVersion = false
 }
-
 
 // EnableSoleArgumentHelpVersion configures the command parser so that --help and --version
 // are only recognized when passed as the sole command-line argument.
@@ -503,7 +507,6 @@ func (c *Command) Parse(args []string) error {
 	c.parser = NewParser(c.Name, c.Flags, c.Config)
 	return c.parser.Parse(args)
 }
-
 
 // Operands returns positional operands collected during Parse.
 func (c *Command) Operands() []string {
@@ -642,7 +645,3 @@ func (c *Command) executeStreams(args []string, stdin io.Reader, stdout, stderr 
 	}
 	return nil
 }
-
-
-
-

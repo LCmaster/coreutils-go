@@ -83,6 +83,16 @@ func TestCommand_NumericShorthand(t *testing.T) {
 	if !reflect.DeepEqual(cmd.Operands(), []string{"file.txt"}) {
 		t.Errorf("operands = %v", cmd.Operands())
 	}
+
+	// Numeric shorthand handler error formatted with NumericErrFormat
+	cmdErr := NewCommand("head", "head")
+	cmdErr.EnableNumericShorthand("%s: invalid number of lines: '%s'", func(_ string) error {
+		return errors.New("out of range")
+	})
+	err = cmdErr.Parse([]string{"-0"})
+	if err == nil || err.Error() != "head: invalid number of lines: '0'" {
+		t.Errorf("expected custom error format, got %v", err)
+	}
 }
 
 func TestCommand_EndOfOptions(t *testing.T) {
@@ -173,7 +183,9 @@ func TestCommand_Errors(t *testing.T) {
 func TestCommand_StopOnUnknown(t *testing.T) {
 	var noNewline, escape bool
 	newEchoCommand := func() *Command {
-		cmd := NewCommandWithConfig("echo", EchoConfig(), "echo [OPTIONS]... [STRING]...")
+		cmd := NewCommand("echo", "echo [OPTIONS]... [STRING]...")
+		cmd.SetStopOnUnknown(true)
+		cmd.EnableAutoShortVersion()
 		cmd.BoolVar(&noNewline, 'n', "", "no newline")
 		cmd.BoolVar(&escape, 'e', "", "enable escape")
 		return cmd
@@ -419,6 +431,184 @@ func TestCommand_HybridOptions(t *testing.T) {
 	}
 }
 
+func TestCommand_SoleArgumentHelpVersion(t *testing.T) {
+	newCmd := func() *Command {
+		cmd := NewCommand("true", "true [ignored command line arguments]", "true OPTION")
+		cmd.EnableAutoShortHelp()
+		cmd.EnableAutoShortVersion()
+		return cmd
+	}
 
+	// 1. Sole --help
+	cmd := newCmd()
+	if err := cmd.Parse([]string{"--help"}); err != nil || cmd.Action() != ActionHelp {
+		t.Errorf("expected ActionHelp for sole --help, got %v (err: %v)", cmd.Action(), err)
+	}
 
+	// 2. Sole -h
+	cmd = newCmd()
+	if err := cmd.Parse([]string{"-h"}); err != nil || cmd.Action() != ActionHelp {
+		t.Errorf("expected ActionHelp for sole -h, got %v (err: %v)", cmd.Action(), err)
+	}
+
+	// 3. Sole --version
+	cmd = newCmd()
+	if err := cmd.Parse([]string{"--version"}); err != nil || cmd.Action() != ActionVersion {
+		t.Errorf("expected ActionVersion for sole --version, got %v (err: %v)", cmd.Action(), err)
+	}
+
+	// 4. Sole -v
+	cmd = newCmd()
+	if err := cmd.Parse([]string{"-v"}); err != nil || cmd.Action() != ActionVersion {
+		t.Errorf("expected ActionVersion for sole -v, got %v (err: %v)", cmd.Action(), err)
+	}
+
+	// 5. Multiple arguments with --help are treated as normal operands
+	cmd = newCmd()
+	if err := cmd.Parse([]string{"--help", "something"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cmd.Action() != ActionRun {
+		t.Errorf("expected ActionRun when multiple args, got %v", cmd.Action())
+	}
+	if !reflect.DeepEqual(cmd.Operands(), []string{"--help", "something"}) {
+		t.Errorf("operands = %v, want ['--help', 'something']", cmd.Operands())
+	}
+
+	// 6. Unknown flags treated as operands without errors
+	cmd = newCmd()
+	if err := cmd.Parse([]string{"-x", "--unknown"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cmd.Action() != ActionRun {
+		t.Errorf("expected ActionRun, got %v", cmd.Action())
+	}
+	if !reflect.DeepEqual(cmd.Operands(), []string{"-x", "--unknown"}) {
+		t.Errorf("operands = %v, want ['-x', '--unknown']", cmd.Operands())
+	}
+
+	// 7. Explicit EnableSoleArgumentHelpVersion without usage heuristic
+	explicitCmd := NewCommand("testsole")
+	explicitCmd.EnableSoleArgumentHelpVersion()
+	if err := explicitCmd.Parse([]string{"--help"}); err != nil || explicitCmd.Action() != ActionHelp {
+		t.Errorf("expected ActionHelp for explicit sole --help")
+	}
+	explicitCmd = NewCommand("testsole")
+	explicitCmd.EnableSoleArgumentHelpVersion()
+	if err := explicitCmd.Parse([]string{"--help", "operand"}); err != nil || explicitCmd.Action() != ActionRun {
+		t.Errorf("expected ActionRun when not sole argument")
+	}
+}
+
+func TestCommand_AutoShortHelpAndVersion(t *testing.T) {
+	// DisableAutoShortHelp
+	cmd := NewCommand("cat")
+	cmd.DisableAutoShortHelp()
+	err := cmd.Parse([]string{"-h"})
+	if err == nil || !strings.Contains(err.Error(), "invalid option -- 'h'") {
+		t.Errorf("expected invalid option -- 'h' when DisableAutoShortHelp, got: %v", err)
+	}
+
+	// Re-enable AutoShortHelp
+	cmd = NewCommand("cat")
+	cmd.DisableAutoShortHelp()
+	cmd.EnableAutoShortHelp()
+	err = cmd.Parse([]string{"-h"})
+	if err != nil || cmd.Action() != ActionHelp {
+		t.Errorf("expected ActionHelp with EnableAutoShortHelp, got action=%v err=%v", cmd.Action(), err)
+	}
+
+	// EnableAutoShortVersion
+	cmd = NewCommand("echo")
+	cmd.EnableAutoShortVersion()
+	err = cmd.Parse([]string{"-v"})
+	if err != nil || cmd.Action() != ActionVersion {
+		t.Errorf("expected ActionVersion with EnableAutoShortVersion, got action=%v err=%v", cmd.Action(), err)
+	}
+
+	// DisableAutoShortVersion
+	cmd = NewCommand("echo")
+	cmd.EnableAutoShortVersion()
+	cmd.DisableAutoShortVersion()
+	err = cmd.Parse([]string{"-v"})
+	if err == nil || !strings.Contains(err.Error(), "invalid option -- 'v'") {
+		t.Errorf("expected invalid option -- 'v' when DisableAutoShortVersion, got: %v", err)
+	}
+}
+
+func TestCommand_FlagAliases(t *testing.T) {
+	t.Run("FlagFunc with multiple long aliases", func(t *testing.T) {
+		quietCount := 0
+		cmd := NewCommand("head")
+		cmd.FlagFunc('q', "quiet, silent", "Never print headers", false, func(_ string) error {
+			quietCount++
+			return nil
+		})
+
+		// Trigger via short flag -q
+		if err := cmd.Parse([]string{"-q"}); err != nil {
+			t.Fatalf("unexpected error for -q: %v", err)
+		}
+		if quietCount != 1 {
+			t.Errorf("expected quietCount=1, got %d", quietCount)
+		}
+
+		// Trigger via first alias --quiet
+		if err := cmd.Parse([]string{"--quiet"}); err != nil {
+			t.Fatalf("unexpected error for --quiet: %v", err)
+		}
+		if quietCount != 2 {
+			t.Errorf("expected quietCount=2, got %d", quietCount)
+		}
+
+		// Trigger via second alias --silent
+		if err := cmd.Parse([]string{"--silent"}); err != nil {
+			t.Fatalf("unexpected error for --silent: %v", err)
+		}
+		if quietCount != 3 {
+			t.Errorf("expected quietCount=3, got %d", quietCount)
+		}
+	})
+
+	t.Run("FlagArgFunc with multiple long aliases and values", func(t *testing.T) {
+		var receivedVal string
+		cmd := NewCommand("head")
+		cmd.FlagArgFunc('n', "lines, max-lines", "NUM", "line count", func(val string) error {
+			receivedVal = val
+			return nil
+		})
+
+		if err := cmd.Parse([]string{"--lines=42"}); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if receivedVal != "42" {
+			t.Errorf("expected '42', got %q", receivedVal)
+		}
+
+		if err := cmd.Parse([]string{"--max-lines", "100"}); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if receivedVal != "100" {
+			t.Errorf("expected '100', got %q", receivedVal)
+		}
+	})
+
+	t.Run("AddBool with multiple aliases tracks options for all names", func(t *testing.T) {
+		cmd := NewCommand("test")
+		cmd.AddBool('q', "quiet, silent", "suppress output")
+
+		if cmd.Bool("quiet") || cmd.Bool("silent") {
+			t.Errorf("expected initial false for aliases")
+		}
+
+		if err := cmd.Parse([]string{"--silent"}); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if !cmd.Bool("quiet") || !cmd.Bool("silent") || !cmd.Bool("q") {
+			t.Errorf("expected all aliases to be true, got quiet=%v, silent=%v, q=%v",
+				cmd.Bool("quiet"), cmd.Bool("silent"), cmd.Bool("q"))
+		}
+	})
+}
 

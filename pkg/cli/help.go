@@ -14,20 +14,30 @@ type HelpOption struct {
 // Opt creates a HelpOption with standard GNU flag formatting and alignment.
 func Opt(short rune, long, arg, description string) HelpOption {
 	var flagStr string
+	longs := splitLongNames(long)
+
 	switch {
-	case short != 0 && long != "":
-		if arg != "" {
-			flagStr = fmt.Sprintf("-%c, --%s=%s", short, long, arg)
-		} else {
-			flagStr = fmt.Sprintf("-%c, --%s", short, long)
+	case short != 0 && len(longs) > 0:
+		var longParts []string
+		for _, l := range longs {
+			if arg != "" {
+				longParts = append(longParts, fmt.Sprintf("--%s=%s", l, arg))
+			} else {
+				longParts = append(longParts, fmt.Sprintf("--%s", l))
+			}
 		}
-	case short == 0 && long != "":
-		if arg != "" {
-			flagStr = fmt.Sprintf("      --%s=%s", long, arg)
-		} else {
-			flagStr = fmt.Sprintf("      --%s", long)
+		flagStr = fmt.Sprintf("-%c, %s", short, strings.Join(longParts, ", "))
+	case short == 0 && len(longs) > 0:
+		var longParts []string
+		for _, l := range longs {
+			if arg != "" {
+				longParts = append(longParts, fmt.Sprintf("--%s=%s", l, arg))
+			} else {
+				longParts = append(longParts, fmt.Sprintf("--%s", l))
+			}
 		}
-	case short != 0 && long == "":
+		flagStr = fmt.Sprintf("      %s", strings.Join(longParts, ", "))
+	case short != 0 && len(longs) == 0:
 		if arg != "" {
 			flagStr = fmt.Sprintf("-%c %s", short, arg)
 		} else {
@@ -70,16 +80,21 @@ func FormatHelp(cfg HelpConfig) string {
 
 	// 1. Usage section
 	if len(cfg.Usage) > 0 {
-		b.WriteString("Usage: " + cfg.Usage[0] + "\n")
+		b.WriteString("Usage: ")
+		b.WriteString(cfg.Usage[0])
+		b.WriteString("\n")
 		for _, alt := range cfg.Usage[1:] {
-			b.WriteString("  or:  " + alt + "\n")
+			b.WriteString("  or:  ")
+			b.WriteString(alt)
+			b.WriteString("\n")
 		}
 	}
 
 	// 2. Description section
 	if cfg.Description != "" {
 		b.WriteString("\nDescription:\n")
-		b.WriteString(cfg.Description + "\n")
+		b.WriteString(cfg.Description)
+		b.WriteString("\n")
 	}
 
 	// 3. Options section
@@ -93,7 +108,8 @@ func FormatHelp(cfg HelpConfig) string {
 		}
 
 		for _, opt := range cfg.Options {
-			b.WriteString("  " + opt.Flags)
+			b.WriteString("  ")
+			b.WriteString(opt.Flags)
 			descLines := strings.Split(opt.Description, "\n")
 			if len(descLines) == 0 || opt.Description == "" {
 				b.WriteString("\n")
@@ -105,25 +121,32 @@ func FormatHelp(cfg HelpConfig) string {
 				padding = 2
 			}
 			b.WriteString(strings.Repeat(" ", padding))
-			b.WriteString(descLines[0] + "\n")
+			b.WriteString(descLines[0])
+			b.WriteString("\n")
 
 			contIndent := strings.Repeat(" ", 2+flagColWidth+2)
 			for _, line := range descLines[1:] {
-				b.WriteString(contIndent + line + "\n")
+				b.WriteString(contIndent)
+				b.WriteString(line)
+				b.WriteString("\n")
 			}
 		}
 	}
 
 	// 4. Notes / Supplementary format section
 	if cfg.Notes != "" {
-		b.WriteString("\n" + cfg.Notes + "\n")
+		b.WriteString("\n")
+		b.WriteString(cfg.Notes)
+		b.WriteString("\n")
 	}
 
 	// 5. Examples section
 	if len(cfg.Examples) > 0 {
 		b.WriteString("\nExamples:\n")
 		for _, ex := range cfg.Examples {
-			b.WriteString("  " + ex + "\n")
+			b.WriteString("  ")
+			b.WriteString(ex)
+			b.WriteString("\n")
 		}
 	}
 
@@ -174,4 +197,3 @@ func (h CmdHelper) Format(options []HelpOption) string {
 		Examples:    h.Examples,
 	})
 }
-

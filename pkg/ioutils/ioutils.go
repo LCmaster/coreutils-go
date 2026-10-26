@@ -31,5 +31,6 @@ func IsBrokenPipe(err error) bool {
 	if errors.Is(err, syscall.EPIPE) {
 		return true
 	}
-	return strings.Contains(strings.ToLower(err.Error()), "broken pipe")
+	errStr := strings.ToLower(err.Error())
+	return strings.Contains(errStr, "broken pipe") || strings.Contains(errStr, "pipe has been ended")
 }

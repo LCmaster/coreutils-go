@@ -1,5 +1,27 @@
 package cli
 
+import (
+	"strings"
+)
+
+// splitLongNames splits a comma-separated list of long flag aliases,
+// trimming whitespace and leading "--".
+func splitLongNames(long string) []string {
+	if long == "" {
+		return nil
+	}
+	parts := strings.Split(long, ",")
+	names := make([]string, 0, len(parts))
+	for _, p := range parts {
+		name := strings.TrimSpace(p)
+		name = strings.TrimPrefix(name, "--")
+		if name != "" {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
 // Flag represents a command-line flag specification.
 type Flag struct {
 	Short       rune
@@ -32,7 +54,9 @@ func (fs *FlagSet) Add(f *Flag) {
 		fs.shortMap[f.Short] = f
 	}
 	if f.Long != "" {
-		fs.longMap[f.Long] = f
+		for _, name := range splitLongNames(f.Long) {
+			fs.longMap[name] = f
+		}
 	}
 }
 

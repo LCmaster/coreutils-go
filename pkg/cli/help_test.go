@@ -75,3 +75,23 @@ func TestCommand_IntegratedHelp(t *testing.T) {
 	}
 }
 
+func TestHelp_FlagAliases(t *testing.T) {
+	cmd := NewCommand("head", "head [OPTION]... [FILE]...")
+	cmd.FlagFunc('q', "quiet, silent", "never print headers giving file names", false, func(_ string) error { return nil })
+	cmd.FlagArgFunc('n', "lines, max-lines", "NUM", "print lines", func(_ string) error { return nil })
+	cmd.AddHelpOption(Opt(0, "help, info", "", "display help"))
+
+	help := cmd.Help()
+
+	for _, expected := range []string{
+		"-q, --quiet, --silent",
+		"-n, --lines=NUM, --max-lines=NUM",
+		"--help, --info",
+	} {
+		if !strings.Contains(help, expected) {
+			t.Errorf("cmd.Help() missing %q:\n%s", expected, help)
+		}
+	}
+}
+
+

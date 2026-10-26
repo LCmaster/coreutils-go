@@ -31,8 +31,8 @@ A modern, fast, cross-platform rewrite of the classic **GNU Coreutils** in pure 
 | [`yes`](cmd/yes) | Output a string repeatedly until killed | ✅ Stable | [README](cmd/yes/README.md) |
 | [`true`](cmd/true) | Return a successful exit status (0) | ✅ Stable | [README](cmd/true/README.md) |
 | [`false`](cmd/false) | Return an unsuccessful exit status (1) | ✅ Stable | [README](cmd/false/README.md) |
+| [`head`](cmd/head) | Output the first part of files | ✅ Stable | [README](cmd/head/README.md) |
 | `wc` | Print newline, word, and byte counts | ⏳ Planned | — |
-| `head` | Output the first part of files | ⏳ Planned | — |
 | `tail` | Output the last part of files | ⏳ Planned | — |
 | `touch` | Change file access and modification times | ⏳ Planned | — |
 
@@ -52,6 +52,7 @@ go install github.com/LCmaster/coreutils-go/cmd/pwd@latest
 go install github.com/LCmaster/coreutils-go/cmd/yes@latest
 go install github.com/LCmaster/coreutils-go/cmd/true@latest
 go install github.com/LCmaster/coreutils-go/cmd/false@latest
+go install github.com/LCmaster/coreutils-go/cmd/head@latest
 
 # Or install all utilities
 go install github.com/LCmaster/coreutils-go/cmd/...@latest
@@ -190,6 +191,48 @@ $ echo $?
 
 See [cmd/false/README.md](cmd/false/README.md) for full details.
 
+### `head`
+
+```sh
+# Output the first 10 lines (default)
+$ head file.txt
+$ head -
+
+# Custom line count
+$ head -n 5 file.txt
+$ head -5 file.txt
+
+# Print all but the trailing 3 lines
+$ head -n -3 file.txt
+
+# Output by byte count (with optional multiplier suffixes)
+$ head -c 64 file.txt
+$ head -c 1K file.txt
+
+# Print all bytes except the trailing 10 bytes
+$ head -c -10 file.txt
+
+# Multiple files with headers
+$ head file1.txt file2.txt
+==> file1.txt <==
+...
+
+==> file2.txt <==
+...
+
+# Suppress headers or force header on single file / stdin
+$ head -q file1.txt file2.txt
+$ head -v file.txt
+$ echo "hello" | head -v
+==> standard input <==
+hello
+
+# NUL-delimited records
+$ head -z -n 2 records.txt
+```
+
+See [cmd/head/README.md](cmd/head/README.md) for full details.
+
 ---
 
 ## Project Structure
@@ -200,17 +243,22 @@ coreutils-go/
 │   ├── cat/               # cat command CLI implementation
 │   │   ├── cat.go         # Core stream/file processing, cycle detection & safety
 │   │   ├── transform.go   # Functional line transformer pipeline & combinators
-│   │   ├── main.go        # Cobra CLI definitions & flag bindings
+│   │   ├── main.go        # CLI parser & streaming lifecycle
 │   │   ├── main_test.go   # Complete integration & unit test suite
 │   │   └── README.md      # cat manual & usage guide
 │   ├── echo/              # echo command CLI implementation
-│   │   ├── main.go        # Cobra CLI definitions & stream writing
+│   │   ├── main.go        # Arguments & escape sequence writer
 │   │   ├── main_test.go   # Comprehensive integration & unit tests
 │   │   └── README.md      # echo manual & usage guide
 │   ├── false/             # false command CLI implementation
 │   │   ├── main.go        # false command entry point
 │   │   ├── main_test.go   # Complete test suite
 │   │   └── README.md      # false manual & usage guide
+│   ├── head/              # head command CLI implementation
+│   │   ├── head.go        # Positive/negative lines & bytes filtering engines
+│   │   ├── main.go        # Multi-file loop, headers, & CLI entry point
+│   │   ├── main_test.go   # Complete integration & unit test suite
+│   │   └── README.md      # head manual & usage guide
 │   ├── pwd/               # pwd command CLI implementation
 │   │   ├── predicate.go   # Functional combinators & path validation predicates
 │   │   ├── pwd.go         # Domain model & path resolution strategies
@@ -226,9 +274,12 @@ coreutils-go/
 │       ├── main_test.go   # Tests & throughput benchmark
 │       └── README.md      # yes manual & usage guide
 ├── pkg/
-│   └── unescape/          # Shared escape sequence interpreter
-│       ├── unescape.go
-│       └── unescape_test.go
+│   ├── cli/               # Lightweight, zero-dependency GNU/POSIX argument parser
+│   ├── fn/                # Functional combinators & stream pipeline helpers
+│   ├── fsutils/           # Cross-platform filesystem & path introspection
+│   ├── ioutils/           # Resilient I/O routines & broken pipe detection
+│   ├── strutils/          # GNU string utilities & escape sequence parser
+│   └── version/           # Centralized semantic version formatting
 ├── go.mod                 # Go module definition (Go 1.26)
 ├── go.sum
 ├── LICENSE                # MIT License
