@@ -919,8 +919,7 @@ func BenchmarkHead_First10Lines(b *testing.B) {
 	}
 	content := sb.String()
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		var out bytes.Buffer
 		_ = copyFirstLines(&out, strings.NewReader(content), '\n', 10)
 	}
@@ -933,8 +932,7 @@ func BenchmarkHead_NegativeLines(b *testing.B) {
 	}
 	content := sb.String()
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		var out bytes.Buffer
 		_ = copyAllExceptLastLines(&out, strings.NewReader(content), '\n', 10)
 	}
@@ -943,8 +941,7 @@ func BenchmarkHead_NegativeLines(b *testing.B) {
 func BenchmarkHead_FirstBytes(b *testing.B) {
 	data := bytes.Repeat([]byte("abcdefghijklmnopqrstuvwxyz012345"), 1000)
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		var out bytes.Buffer
 		_ = copyFirstBytes(&out, bytes.NewReader(data), 1024)
 	}
@@ -953,8 +950,7 @@ func BenchmarkHead_FirstBytes(b *testing.B) {
 func BenchmarkHead_NegativeBytes(b *testing.B) {
 	data := bytes.Repeat([]byte("abcdefghijklmnopqrstuvwxyz012345"), 1000)
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		var out bytes.Buffer
 		_ = copyAllExceptLastBytes(&out, bytes.NewReader(data), 1024)
 	}
