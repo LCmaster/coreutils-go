@@ -914,7 +914,7 @@ func TestHead_InStreaming_InfiniteInput(t *testing.T) {
 
 func BenchmarkHead_First10Lines(b *testing.B) {
 	var sb strings.Builder
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		sb.WriteString("benchmark line of text for testing throughput\n")
 	}
 	content := sb.String()
@@ -927,7 +927,7 @@ func BenchmarkHead_First10Lines(b *testing.B) {
 
 func BenchmarkHead_NegativeLines(b *testing.B) {
 	var sb strings.Builder
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		sb.WriteString("benchmark line of text for testing throughput\n")
 	}
 	content := sb.String()
