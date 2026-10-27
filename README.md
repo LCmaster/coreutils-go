@@ -32,7 +32,7 @@ A modern, fast, cross-platform rewrite of the classic **GNU Coreutils** in pure 
 | [`true`](cmd/true) | Return a successful exit status (0) | ✅ Stable | [README](cmd/true/README.md) |
 | [`false`](cmd/false) | Return an unsuccessful exit status (1) | ✅ Stable | [README](cmd/false/README.md) |
 | [`head`](cmd/head) | Output the first part of files | ✅ Stable | [README](cmd/head/README.md) |
-| `wc` | Print newline, word, and byte counts | ⏳ Planned | — |
+| [`wc`](cmd/wc) | Print newline, word, and byte counts | ✅ Stable | [README](cmd/wc/README.md) |
 | `tail` | Output the last part of files | ⏳ Planned | — |
 | `touch` | Change file access and modification times | ⏳ Planned | — |
 
@@ -53,6 +53,7 @@ go install github.com/LCmaster/coreutils-go/cmd/yes@latest
 go install github.com/LCmaster/coreutils-go/cmd/true@latest
 go install github.com/LCmaster/coreutils-go/cmd/false@latest
 go install github.com/LCmaster/coreutils-go/cmd/head@latest
+go install github.com/LCmaster/coreutils-go/cmd/wc@latest
 
 # Or install all utilities
 go install github.com/LCmaster/coreutils-go/cmd/...@latest
@@ -233,6 +234,32 @@ $ head -z -n 2 records.txt
 
 See [cmd/head/README.md](cmd/head/README.md) for full details.
 
+### `wc`
+
+```sh
+# Default counts: lines, words, and bytes
+$ wc file.txt
+  15  120  840 file.txt
+
+# Count lines, words, characters, bytes, or maximum line length individually
+$ wc -l file.txt
+$ wc -w file.txt
+$ wc -m file.txt
+$ wc -c file.txt
+$ wc -L file.txt
+
+# Multiple files with cumulative total row
+$ wc file1.txt file2.txt
+  10   50  300 file1.txt
+  20  100  700 file2.txt
+  30  150 1000 total
+
+# Read NUL-terminated filenames from a file or standard input
+$ find . -name "*.go" -print0 | wc -l --files0-from=-
+```
+
+See [cmd/wc/README.md](cmd/wc/README.md) for full details.
+
 ---
 
 ## Project Structure
@@ -269,6 +296,10 @@ coreutils-go/
 │   │   ├── main.go        # true command entry point
 │   │   ├── main_test.go   # Complete test suite
 │   │   └── README.md      # true manual & usage guide
+│   ├── wc/                # wc command CLI implementation
+│   │   ├── main.go        # Single-pass streaming counter, formatting & CLI entry point
+│   │   ├── main_test.go   # Complete integration, unit & benchmark test suite
+│   │   └── README.md      # wc manual & usage guide
 │   └── yes/               # yes command CLI implementation
 │       ├── main.go        # High-performance 64KB chunk stream
 │       ├── main_test.go   # Tests & throughput benchmark
@@ -318,5 +349,7 @@ Contributions are welcome! If you would like to implement a new utility or enhan
 ---
 
 ## License
+
+This project is licensed under the terms of the [MIT License](LICENSE).
 
 This project is licensed under the terms of the [MIT License](LICENSE).
