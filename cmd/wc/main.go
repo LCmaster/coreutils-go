@@ -150,11 +150,26 @@ func formatRow(c wcCounts, label string, width int, showLines, showWords, showCh
 	return sb.String()
 }
 
-func computeColWidth(total wcCounts, numFiles, numCols int) int {
+func computeColWidth(total wcCounts, numFiles, numCols int, showLines, showWords, showChars, showBytes, showMaxLine bool) int {
 	if numFiles == 1 && numCols == 1 {
 		return 0
 	}
-	maxVal := max(total.lines, total.words, total.chars, total.bytes, total.maxLineLen)
+	var maxVal int64
+	if showLines && total.lines > maxVal {
+		maxVal = total.lines
+	}
+	if showWords && total.words > maxVal {
+		maxVal = total.words
+	}
+	if showChars && total.chars > maxVal {
+		maxVal = total.chars
+	}
+	if showBytes && total.bytes > maxVal {
+		maxVal = total.bytes
+	}
+	if showMaxLine && total.maxLineLen > maxVal {
+		maxVal = total.maxLineLen
+	}
 	digits := len(strconv.FormatInt(maxVal, 10))
 	if numCols > 1 && numFiles == 1 && digits < 7 {
 		return 7
@@ -290,7 +305,7 @@ func newCommand() *cli.Command {
 			results = append(results, fileResult{counts: counts, label: label})
 		}
 
-		width := computeColWidth(total, len(operands), numCols)
+		width := computeColWidth(total, len(operands), numCols, showLines, showWords, showChars, showBytes, showMaxLine)
 		for _, res := range results {
 			row := formatRow(res.counts, res.label, width, showLines, showWords, showChars, showBytes, showMaxLine)
 			if _, err := writer.WriteString(row); err != nil {
