@@ -23,11 +23,12 @@ const (
 // It parses an argument list against a FlagSet and Config without any knowledge
 // of documentation, usage synopses, or help presentation.
 type Parser struct {
-	name     string // used for diagnostics matching GNU format: "<name>: invalid option -- 'x'"
-	flags    *FlagSet
-	config   Config
-	operands []string
-	action   Action
+	name             string // used for diagnostics matching GNU format: "<name>: invalid option -- 'x'"
+	flags            *FlagSet
+	config           Config
+	operands         []string
+	explicitOperands []string
+	action           Action
 }
 
 // NewParser creates a new pure argument parser instance.
@@ -43,9 +44,22 @@ func NewParser(name string, flags *FlagSet, config Config) *Parser {
 	}
 }
 
-// Operands returns positional operands collected during Parse.
+// Operands returns positional operands collected during Parse
+// (including DefaultOperands if no explicit operands were provided).
 func (p *Parser) Operands() []string {
 	return p.operands
+}
+
+// ExplicitOperands returns only the positional operands explicitly passed on the
+// command line, excluding any fallback DefaultOperands.
+func (p *Parser) ExplicitOperands() []string {
+	return p.explicitOperands
+}
+
+// UsedDefaultOperands reports whether DefaultOperands were substituted because no
+// explicit positional operands were supplied.
+func (p *Parser) UsedDefaultOperands() bool {
+	return len(p.explicitOperands) == 0 && len(p.operands) > 0
 }
 
 // Args is an alias for Operands matching Go standard library conventions.
@@ -79,6 +93,7 @@ func isNumeric(s string) bool {
 //   - Formats error messages matching GNU coreutils diagnostics.
 func (p *Parser) Parse(args []string) error {
 	p.operands = nil
+	p.explicitOperands = nil
 	p.action = ActionRun
 
 	if p.config.SoleArgumentHelpVersion {
@@ -106,6 +121,7 @@ func (p *Parser) Parse(args []string) error {
 				}
 			}
 		}
+		p.explicitOperands = args
 		p.operands = args
 		return nil
 	}
@@ -280,8 +296,9 @@ func (p *Parser) Parse(args []string) error {
 		}
 	}
 
+	p.explicitOperands = operands
 	if len(operands) == 0 && len(p.config.DefaultOperands) > 0 {
-		operands = append(operands, p.config.DefaultOperands...)
+		operands = append([]string(nil), p.config.DefaultOperands...)
 	}
 
 	p.operands = operands

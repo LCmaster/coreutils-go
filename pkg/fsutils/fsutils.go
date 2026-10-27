@@ -58,25 +58,20 @@ func IsCurrentDirectory(targetPath string) bool {
 // It returns true if and only if both file and out refer to the same regular file according
 // to os.SameFile. If out is not an *os.File or file is nil/a directory, it returns false.
 func IsSameAsOutput(file *os.File, out io.Writer) bool {
-	if file == nil {
+	if file == nil || out == nil {
+		return false
+	}
+	outFile, ok := out.(*os.File)
+	if !ok {
 		return false
 	}
 	stat, err := file.Stat()
 	if err != nil || stat.IsDir() {
 		return false
 	}
-
-	var outStat os.FileInfo
-	if outFile, ok := out.(*os.File); ok {
-		if s, err := outFile.Stat(); err == nil && s.Mode().IsRegular() {
-			outStat = s
-		}
-	} else if s, err := os.Stdout.Stat(); err == nil && s.Mode().IsRegular() {
-		outStat = s
+	outStat, err := outFile.Stat()
+	if err != nil || !outStat.Mode().IsRegular() {
+		return false
 	}
-
-	if outStat != nil {
-		return os.SameFile(stat, outStat)
-	}
-	return false
+	return os.SameFile(stat, outStat)
 }

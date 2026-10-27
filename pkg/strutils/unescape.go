@@ -29,6 +29,10 @@ import (
 //   - halt: true if the `\c` escape was encountered, signaling that all subsequent
 //     output processing must stop immediately and trailing newlines must be omitted.
 func Unescape(s string) (string, bool) {
+	if strings.IndexByte(s, '\\') == -1 {
+		return s, false
+	}
+
 	var buf strings.Builder
 	buf.Grow(len(s))
 

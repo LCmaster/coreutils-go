@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestSplitSegments(t *testing.T) {
@@ -123,5 +124,39 @@ func TestIsSameAsOutput(t *testing.T) {
 
 	if IsSameAsOutput(nil, f1Writer) {
 		t.Errorf("IsSameAsOutput(nil, f1Writer) want false, got true")
+	}
+
+	if IsSameAsOutput(f1, nil) {
+		t.Errorf("IsSameAsOutput(f1, nil) want false, got true")
+	}
+}
+
+func TestAccessTime(t *testing.T) {
+	if !AccessTime(nil).IsZero() {
+		t.Errorf("expected zero time for nil FileInfo")
+	}
+
+	path := filepath.Join(t.TempDir(), "atime.txt")
+	if err := os.WriteFile(path, []byte("data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wantAtime := time.Date(2025, 3, 15, 10, 20, 30, 0, time.UTC)
+	wantMtime := time.Date(2024, 1, 10, 8, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(path, wantAtime, wantMtime); err != nil {
+		t.Fatal(err)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	gotAtime := AccessTime(info)
+	if !gotAtime.Equal(wantAtime) {
+		t.Errorf("AccessTime = %v, want %v", gotAtime, wantAtime)
+	}
+	if !info.ModTime().Equal(wantMtime) {
+		t.Errorf("ModTime = %v, want %v", info.ModTime(), wantMtime)
 	}
 }

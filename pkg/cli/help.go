@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 // HelpOption defines a command-line option for formatted help output.
@@ -102,8 +103,9 @@ func FormatHelp(cfg HelpConfig) string {
 		b.WriteString("\n")
 		flagColWidth := 24
 		for _, opt := range cfg.Options {
-			if len(opt.Flags) > flagColWidth && len(opt.Flags) <= 30 {
-				flagColWidth = len(opt.Flags)
+			w := utf8.RuneCountInString(opt.Flags)
+			if w > flagColWidth && w <= 30 {
+				flagColWidth = w
 			}
 		}
 
@@ -116,7 +118,8 @@ func FormatHelp(cfg HelpConfig) string {
 				continue
 			}
 
-			padding := (flagColWidth + 2) - len(opt.Flags)
+			flagWidth := utf8.RuneCountInString(opt.Flags)
+			padding := (flagColWidth + 2) - flagWidth
 			if padding < 2 {
 				padding = 2
 			}

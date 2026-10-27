@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"strconv"
 	"strings"
@@ -35,6 +36,18 @@ func NewOptions() *Options {
 		Strings: make(map[string]string),
 		Ints:    make(map[string]int),
 	}
+}
+
+// Clone returns a deep copy of the Options container.
+func (o *Options) Clone() *Options {
+	cloned := NewOptions()
+	if o == nil {
+		return cloned
+	}
+	maps.Copy(cloned.Bools, o.Bools)
+	maps.Copy(cloned.Strings, o.Strings)
+	maps.Copy(cloned.Ints, o.Ints)
+	return cloned
 }
 
 // Bool returns the boolean value of an option by name, or false if not present.
@@ -75,6 +88,7 @@ type Command struct {
 	Flags      *FlagSet
 	Config     Config
 	Options    *Options
+	defaults   *Options
 	Run        RunFunc
 	OnError    ErrorHandlerFunc
 	versionStr string
@@ -99,11 +113,12 @@ func NewCommandWithConfig(name string, cfg Config, usage ...string) *Command {
 		usage = []string{name + " [OPTION]..."}
 	}
 	return &Command{
-		Name:    name,
-		Helper:  CmdHelper{Name: name, Usage: usage},
-		Flags:   NewFlagSet(),
-		Config:  cfg,
-		Options: NewOptions(),
+		Name:     name,
+		Helper:   CmdHelper{Name: name, Usage: usage},
+		Flags:    NewFlagSet(),
+		Config:   cfg,
+		Options:  NewOptions(),
+		defaults: NewOptions(),
 	}
 }
 
@@ -227,6 +242,9 @@ func (c *Command) ensureOptions() {
 	if c.Options == nil {
 		c.Options = NewOptions()
 	}
+	if c.defaults == nil {
+		c.defaults = NewOptions()
+	}
 }
 
 // Bool returns the boolean value of the option with the given name.
@@ -289,40 +307,52 @@ func (c *Command) SetInt(name string, val int) {
 	c.Options.Ints[name] = val
 }
 
-func (c *Command) recordBool(short rune, long string, val bool) {
-	c.ensureOptions()
+func recordBoolTo(target *Options, short rune, long string, val bool) {
 	if long != "" {
 		for _, name := range splitLongNames(long) {
-			c.Options.Bools[name] = val
+			target.Bools[name] = val
 		}
 	}
 	if short != 0 {
-		c.Options.Bools[string(short)] = val
+		target.Bools[string(short)] = val
 	}
+}
+
+func recordStringTo(target *Options, short rune, long string, val string) {
+	if long != "" {
+		for _, name := range splitLongNames(long) {
+			target.Strings[name] = val
+		}
+	}
+	if short != 0 {
+		target.Strings[string(short)] = val
+	}
+}
+
+func recordIntTo(target *Options, short rune, long string, val int) {
+	if long != "" {
+		for _, name := range splitLongNames(long) {
+			target.Ints[name] = val
+		}
+	}
+	if short != 0 {
+		target.Ints[string(short)] = val
+	}
+}
+
+func (c *Command) recordBool(short rune, long string, val bool) {
+	c.ensureOptions()
+	recordBoolTo(c.Options, short, long, val)
 }
 
 func (c *Command) recordString(short rune, long string, val string) {
 	c.ensureOptions()
-	if long != "" {
-		for _, name := range splitLongNames(long) {
-			c.Options.Strings[name] = val
-		}
-	}
-	if short != 0 {
-		c.Options.Strings[string(short)] = val
-	}
+	recordStringTo(c.Options, short, long, val)
 }
 
 func (c *Command) recordInt(short rune, long string, val int) {
 	c.ensureOptions()
-	if long != "" {
-		for _, name := range splitLongNames(long) {
-			c.Options.Ints[name] = val
-		}
-	}
-	if short != 0 {
-		c.Options.Ints[string(short)] = val
-	}
+	recordIntTo(c.Options, short, long, val)
 }
 
 // AddBool registers a boolean flag managed in c.Options.
@@ -332,6 +362,8 @@ func (c *Command) AddBool(short rune, long, description string) {
 
 // AddBoolDefault registers a boolean flag with an initial default value.
 func (c *Command) AddBoolDefault(short rune, long, description string, defaultVal bool) {
+	c.ensureOptions()
+	recordBoolTo(c.defaults, short, long, defaultVal)
 	c.recordBool(short, long, defaultVal)
 	c.FlagFunc(short, long, description, false, func(_ string) error {
 		c.recordBool(short, long, true)
@@ -346,6 +378,8 @@ func (c *Command) AddString(short rune, long, description string) {
 
 // AddStringDefault registers a string flag requiring an argument with a default value.
 func (c *Command) AddStringDefault(short rune, long, argName, description, defaultVal string) {
+	c.ensureOptions()
+	recordStringTo(c.defaults, short, long, defaultVal)
 	c.recordString(short, long, defaultVal)
 	if argName == "" {
 		argName = "ARG"
@@ -363,6 +397,8 @@ func (c *Command) AddInt(short rune, long, description string) {
 
 // AddIntDefault registers an integer flag requiring an argument with a default value.
 func (c *Command) AddIntDefault(short rune, long, argName, description string, defaultVal int) {
+	c.ensureOptions()
+	recordIntTo(c.defaults, short, long, defaultVal)
 	c.recordInt(short, long, defaultVal)
 	if argName == "" {
 		argName = "NUM"
@@ -379,7 +415,9 @@ func (c *Command) AddIntDefault(short rune, long, argName, description string, d
 
 // BoolVar registers a boolean flag bound to an external pointer and tracked in c.Options.
 func (c *Command) BoolVar(ptr *bool, short rune, long, description string) {
+	c.ensureOptions()
 	if ptr != nil {
+		recordBoolTo(c.defaults, short, long, *ptr)
 		c.recordBool(short, long, *ptr)
 	}
 	c.FlagFunc(short, long, description, false, func(_ string) error {
@@ -393,7 +431,9 @@ func (c *Command) BoolVar(ptr *bool, short rune, long, description string) {
 
 // StringVar registers a string option bound to an external pointer and tracked in c.Options.
 func (c *Command) StringVar(ptr *string, short rune, long, description string) {
+	c.ensureOptions()
 	if ptr != nil {
+		recordStringTo(c.defaults, short, long, *ptr)
 		c.recordString(short, long, *ptr)
 	}
 	c.FlagArgFunc(short, long, "ARG", description, func(val string) error {
@@ -407,7 +447,9 @@ func (c *Command) StringVar(ptr *string, short rune, long, description string) {
 
 // IntVar registers an integer option bound to an external pointer and tracked in c.Options.
 func (c *Command) IntVar(ptr *int, short rune, long, description string) {
+	c.ensureOptions()
 	if ptr != nil {
+		recordIntTo(c.defaults, short, long, *ptr)
 		c.recordInt(short, long, *ptr)
 	}
 	c.FlagArgFunc(short, long, "NUM", description, func(val string) error {
@@ -497,8 +539,11 @@ func (c *Command) SetDefaultOperands(operands ...string) {
 	c.Config.DefaultOperands = operands
 }
 
-// Parse parses the given command-line arguments using a dedicated Parser instance.
+// Parse resets c.Options to registered defaults and parses the given command-line arguments
+// using a dedicated Parser instance.
 func (c *Command) Parse(args []string) error {
+	c.ensureOptions()
+	c.Options = c.defaults.Clone()
 	for _, u := range c.Helper.Usage {
 		if strings.Contains(u, "[ignored command line arguments]") {
 			c.Config.SoleArgumentHelpVersion = true
@@ -508,12 +553,31 @@ func (c *Command) Parse(args []string) error {
 	return c.parser.Parse(args)
 }
 
-// Operands returns positional operands collected during Parse.
+// Operands returns positional operands collected during Parse
+// (including DefaultOperands if no explicit operands were provided).
 func (c *Command) Operands() []string {
 	if c.parser == nil {
 		return nil
 	}
 	return c.parser.Operands()
+}
+
+// ExplicitOperands returns only the positional operands explicitly passed on the
+// command line, excluding any fallback DefaultOperands.
+func (c *Command) ExplicitOperands() []string {
+	if c.parser == nil {
+		return nil
+	}
+	return c.parser.ExplicitOperands()
+}
+
+// UsedDefaultOperands reports whether DefaultOperands were substituted because no
+// explicit positional operands were supplied.
+func (c *Command) UsedDefaultOperands() bool {
+	if c.parser == nil {
+		return false
+	}
+	return c.parser.UsedDefaultOperands()
 }
 
 // Args is an alias for Operands matching Go standard library conventions.
@@ -623,7 +687,7 @@ func (c *Command) executeStreams(args []string, stdin io.Reader, stdout, stderr 
 		if c.OnError != nil {
 			c.OnError(c, stderr, err)
 		} else if stderr != nil {
-			fmt.Fprintf(stderr, "%v\n", err)
+			fmt.Fprintf(stderr, "%v\nTry '%s --help' for more information.\n", err, c.Name)
 		}
 		return err
 	}

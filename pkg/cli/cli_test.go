@@ -123,6 +123,38 @@ func TestCommand_DefaultOperands(t *testing.T) {
 	if !reflect.DeepEqual(cmd.Operands(), []string{"-"}) {
 		t.Errorf("operands = %v, want ['-']", cmd.Operands())
 	}
+	if len(cmd.ExplicitOperands()) != 0 || !cmd.UsedDefaultOperands() {
+		t.Errorf("expected ExplicitOperands empty and UsedDefaultOperands true, got %v / %v", cmd.ExplicitOperands(), cmd.UsedDefaultOperands())
+	}
+
+	// Explicit "-" operand
+	if err := cmd.Parse([]string{"-"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !reflect.DeepEqual(cmd.ExplicitOperands(), []string{"-"}) || cmd.UsedDefaultOperands() {
+		t.Errorf("expected ExplicitOperands=['-'] and UsedDefaultOperands=false, got %v / %v", cmd.ExplicitOperands(), cmd.UsedDefaultOperands())
+	}
+}
+
+func TestCommand_OptionsResetOnRepeatedParse(t *testing.T) {
+	cmd := NewCommand("reset-test")
+	cmd.AddBool('v', "verbose", "verbose")
+	cmd.AddStringDefault('f', "format", "FMT", "format", "plain")
+
+	if err := cmd.Parse([]string{"-v", "--format=json"}); err != nil {
+		t.Fatal(err)
+	}
+	if !cmd.Bool("verbose") || cmd.String("format") != "json" {
+		t.Fatalf("expected verbose=true, format=json after first parse")
+	}
+
+	// Second parse without flags should reset to defaults
+	if err := cmd.Parse([]string{}); err != nil {
+		t.Fatal(err)
+	}
+	if cmd.Bool("verbose") || cmd.String("format") != "plain" {
+		t.Errorf("options not reset on second parse: verbose=%v, format=%q", cmd.Bool("verbose"), cmd.String("format"))
+	}
 }
 
 func TestCommand_HelpAndVersion(t *testing.T) {

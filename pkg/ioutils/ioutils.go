@@ -4,13 +4,34 @@ package ioutils
 
 import (
 	"errors"
+	"io"
+	"os"
 	"strings"
 	"syscall"
 )
 
 // DefaultBufferSize is the standard 64 KB memory buffer size used across streaming
-// core utilities (e.g. cat, head, yes) for optimal I/O throughput.
+// core utilities (e.g. cat, head, wc, yes) for optimal I/O throughput.
 const DefaultBufferSize = 64 * 1024
+
+type nopCloser struct{}
+
+func (nopCloser) Close() error { return nil }
+
+// OpenInput returns an io.Reader and io.Closer for the given operand filename.
+// If filename is "-", it returns stdin paired with a no-op Closer so callers can
+// unconditionally close the returned io.Closer without closing standard input.
+// Otherwise, it opens the named file on disk via os.Open.
+func OpenInput(filename string, stdin io.Reader) (io.Reader, io.Closer, error) {
+	if filename == "-" {
+		return stdin, nopCloser{}, nil
+	}
+	f, err := os.Open(filename)
+	if err != nil {
+		return nil, nil, err
+	}
+	return f, f, nil
+}
 
 // IsBrokenPipe reports whether err represents a broken pipe error across platforms.
 //
