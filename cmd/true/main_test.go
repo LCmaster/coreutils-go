@@ -3,10 +3,10 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -19,17 +19,23 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "failed to create temp dir: %v\n", err)
 		os.Exit(1)
 	}
-	defer os.RemoveAll(tmpDir)
 
-	bin := filepath.Join(tmpDir, "true.exe")
+	name := "true"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	bin := filepath.Join(tmpDir, name)
 	cmd := exec.Command("go", "build", "-o", bin, ".")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to build true binary: %v\n%s\n", err, out)
+		_ = os.RemoveAll(tmpDir)
 		os.Exit(1)
 	}
 	binaryPath = bin
 
-	os.Exit(m.Run())
+	code := m.Run()
+	_ = os.RemoveAll(tmpDir)
+	os.Exit(code)
 }
 
 func runTrue(t *testing.T, args ...string) (string, string, error) {
@@ -51,31 +57,6 @@ func runTrueWithStdin(t *testing.T, input string, args ...string) (string, strin
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	return stdout.String(), stderr.String(), err
-}
-
-func captureStdout(f func()) (string, error) {
-	oldStdout := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		return "", err
-	}
-	os.Stdout = w
-
-	outChan := make(chan string)
-	go func() {
-		var buf bytes.Buffer
-		io.Copy(&buf, r)
-		outChan <- buf.String()
-	}()
-
-	f()
-
-	w.Close()
-	os.Stdout = oldStdout
-	out := <-outChan
-	r.Close()
-
-	return out, nil
 }
 
 func TestTrue_BasicInvocation(t *testing.T) {

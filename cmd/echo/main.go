@@ -11,21 +11,8 @@ import (
 	"github.com/LCmaster/coreutils-go/pkg/strutils"
 )
 
-type ArgTransformer func(string) (output string, halt bool)
-
-func IdentityTransformer(s string) (string, bool) {
-	return s, false
-}
-
-func EscapeTransformer(s string) (string, bool) {
-	return strutils.Unescape(s)
-}
-
-func FormatEcho(args []string, opts cli.Options) string {
-	transform := IdentityTransformer
-	if opts.Bool("EnableEscape") {
-		transform = EscapeTransformer
-	}
+func FormatEcho(args []string, opts *cli.Options) string {
+	enableEscape := opts.Bool("EnableEscape")
 
 	var b strings.Builder
 	halt := false
@@ -35,8 +22,10 @@ func FormatEcho(args []string, opts cli.Options) string {
 			b.WriteByte(' ')
 		}
 
-		var text string
-		text, halt = transform(arg)
+		text := arg
+		if enableEscape {
+			text, halt = strutils.Unescape(arg)
+		}
 		b.WriteString(text)
 
 		if halt {
@@ -53,7 +42,7 @@ func FormatEcho(args []string, opts cli.Options) string {
 
 func newCommand() *cli.Command {
 	cmd := cli.NewCommand("echo")
-	cmd.Helper.SetUsage("echo [OPTIONS]... [STRING]...")
+	cmd.SetUsage("echo [OPTIONS]... [STRING]...")
 	cmd.SetStopOnUnknown(true)
 	cmd.EnableAutoShortVersion()
 	cmd.SetDescription("echo writes each given string to standard output, with a space between each and a newline after the last one.")
@@ -72,22 +61,22 @@ func newCommand() *cli.Command {
 		"  \\xHH\t\tbyte with hexadecimal value HH (1 to 2 digits)")
 
 	cmd.FlagFunc('n', "", "do not output the trailing newline", false, func(_ string) error {
-		cmd.Options.Bools["NoNewline"] = true
+		cmd.SetBool("NoNewline", true)
 		return nil
 	})
 	cmd.FlagFunc('e', "", "enable interpretation of backslash escapes", false, func(_ string) error {
-		cmd.Options.Bools["EnableEscape"] = true
+		cmd.SetBool("EnableEscape", true)
 		return nil
 	})
 	cmd.FlagFunc('E', "", "disable interpretation of backslash escapes (default)", false, func(_ string) error {
-		cmd.Options.Bools["EnableEscape"] = false
+		cmd.SetBool("EnableEscape", false)
 		return nil
 	})
 
 	cmd.Run = func(c *cli.Command, _ io.Reader, stdout, _ io.Writer) error {
 		writer := bufio.NewWriter(stdout)
 		defer writer.Flush()
-		if _, err := writer.WriteString(FormatEcho(c.Operands(), *c.Options)); err != nil && !ioutils.IsBrokenPipe(err) {
+		if _, err := writer.WriteString(FormatEcho(c.Operands(), c.Options)); err != nil && !ioutils.IsBrokenPipe(err) {
 			return err
 		}
 		return nil

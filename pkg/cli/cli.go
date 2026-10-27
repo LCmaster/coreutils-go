@@ -62,11 +62,6 @@ func (p *Parser) UsedDefaultOperands() bool {
 	return len(p.explicitOperands) == 0 && len(p.operands) > 0
 }
 
-// Args is an alias for Operands matching Go standard library conventions.
-func (p *Parser) Args() []string {
-	return p.operands
-}
-
 // Action returns the action determined by Parse (ActionRun, ActionHelp, or ActionVersion).
 func (p *Parser) Action() Action {
 	return p.action
@@ -199,13 +194,13 @@ func (p *Parser) Parse(args []string) error {
 					operands = append(operands, args[i:]...)
 					break
 				}
-				return fmt.Errorf("%s: unrecognized option '--%s'", p.name, name)
+				return ErrUnrecognizedOption(p.name, name)
 			}
 
 			if flag.TakesArg {
 				if !hasVal {
 					if i+1 >= len(args) {
-						return fmt.Errorf("%s: option '--%s' requires an argument", p.name, name)
+						return ErrOptionRequiresArgLong(p.name, name)
 					}
 					i++
 					val = args[i]
@@ -215,7 +210,7 @@ func (p *Parser) Parse(args []string) error {
 				}
 			} else {
 				if hasVal {
-					return fmt.Errorf("%s: option '--%s' doesn't allow an argument", p.name, name)
+					return ErrOptionNoArgAllowed(p.name, name)
 				}
 				if err := flag.Handler(""); err != nil {
 					return err
@@ -270,7 +265,7 @@ func (p *Parser) Parse(args []string) error {
 					operands = append(operands, args[i:]...)
 					break
 				}
-				return fmt.Errorf("%s: invalid option -- '%c'", p.name, r)
+				return ErrInvalidOption(p.name, r)
 			}
 
 			if flag.TakesArg {
@@ -279,7 +274,7 @@ func (p *Parser) Parse(args []string) error {
 					val = string(runes[j+1:])
 				} else {
 					if i+1 >= len(args) {
-						return fmt.Errorf("%s: option requires an argument -- '%c'", p.name, r)
+						return ErrOptionRequiresArgShort(p.name, r)
 					}
 					i++
 					val = args[i]

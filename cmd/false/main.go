@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"io"
 	"os"
 
@@ -15,7 +14,7 @@ func newCommand() *cli.Command {
 	cmd.EnableAutoShortVersion()
 	cmd.EnableAutoShortHelp()
 	cmd.Run = func(_ *cli.Command, _ io.Reader, _, _ io.Writer) error {
-		return errors.New("exit status 1")
+		return cli.ErrExitFailure
 	}
 	return cmd
 }

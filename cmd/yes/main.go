@@ -2,35 +2,15 @@ package main
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"os"
 	"strings"
 
 	"github.com/LCmaster/coreutils-go/pkg/cli"
 	"github.com/LCmaster/coreutils-go/pkg/ioutils"
-	"github.com/LCmaster/coreutils-go/pkg/version"
 )
 
 const bufferSize = ioutils.DefaultBufferSize // Memory buffer for optimal I/O throughput
-
-func getHelpStr() string {
-	return cli.FormatHelp(cli.HelpConfig{
-		Usage: []string{
-			"yes [STRING]...",
-			"yes OPTION",
-		},
-		Description: "Repeatedly output a line with all specified STRING(s), or 'y'.",
-		Options: []cli.HelpOption{
-			cli.Opt('h', "help", "", "display this help and exit"),
-			cli.Opt('v', "version", "", "output version information and exit"),
-		},
-	})
-}
-
-func getVersionStr() string {
-	return version.Format("yes")
-}
 
 // buildBuffer creates a reusable chunk buffer pre-filled with line repetitions
 // up to bufferSize to minimize system call overhead.
@@ -64,30 +44,28 @@ func runYes(w io.Writer, args []string) error {
 	}
 }
 
-func run(args []string, _ io.Reader, stdout, stderr io.Writer) int {
-	if len(args) == 1 {
-		switch args[0] {
-		case "-h", "--help":
-			if _, err := fmt.Fprint(stdout, getHelpStr()); err != nil && !ioutils.IsBrokenPipe(err) {
-				return 1
-			}
-			return 0
-		case "-v", "--version":
-			if _, err := fmt.Fprintln(stdout, getVersionStr()); err != nil && !ioutils.IsBrokenPipe(err) {
-				return 1
-			}
-			return 0
+func newCommand() *cli.Command {
+	cmd := cli.NewCommand("yes")
+	cmd.SetUsage("yes [STRING]...", "yes OPTION")
+	cmd.SetDescription("Repeatedly output a line with all specified STRING(s), or 'y'.")
+	cmd.EnableSoleArgumentHelpVersion()
+	cmd.EnableAutoShortHelp()
+	cmd.EnableAutoShortVersion()
+
+	cmd.Run = func(c *cli.Command, _ io.Reader, stdout, stderr io.Writer) error {
+		err := runYes(stdout, c.Operands())
+		if err != nil && !ioutils.IsBrokenPipe(err) {
+			c.Errorf(stderr, "%v", cli.ErrWrite(err))
+			return cli.ErrExitFailure
 		}
+		return nil
 	}
 
-	err := runYes(stdout, args)
-	if err != nil && !ioutils.IsBrokenPipe(err) {
-		fmt.Fprintf(stderr, "yes: write error: %v\n", err)
-		return 1
-	}
-	return 0
+	return cmd
 }
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+	if err := newCommand().Execute(); err != nil {
+		os.Exit(1)
+	}
 }

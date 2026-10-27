@@ -33,7 +33,7 @@ func newCommand() *cli.Command {
 		cmd.SetBool("byteMode", true)
 		num, err := parseNum(number)
 		if err != nil {
-			return fmt.Errorf("invalid number of bytes: '%s'", number)
+			return cli.ErrInvalidNumberOfBytes(number)
 		}
 		cmd.SetInt("bytes", num)
 		return nil
@@ -42,21 +42,21 @@ func newCommand() *cli.Command {
 		cmd.SetBool("byteMode", false)
 		num, err := parseNum(number)
 		if err != nil {
-			return fmt.Errorf("invalid number of lines: '%s'", number)
+			return cli.ErrInvalidNumberOfLines(number)
 		}
 		cmd.SetInt("lines", num)
 		return nil
 	})
 	cmd.FlagFunc('q', "quiet, silent", "never print headers giving file names", false, func(_ string) error {
-		cmd.Options.Strings["verbosity"] = "quiet"
+		cmd.SetString("verbosity", "quiet")
 		return nil
 	})
 	cmd.FlagFunc('v', "verbose", "always print headers giving file names", false, func(_ string) error {
-		cmd.Options.Strings["verbosity"] = "verbose"
+		cmd.SetString("verbosity", "verbose")
 		return nil
 	})
 	cmd.FlagFunc('z', "zero-terminated", "line delimiter is NUL, not newline", false, func(_ string) error {
-		cmd.Options.Bools["zeroTerminated"] = true
+		cmd.SetBool("zeroTerminated", true)
 		return nil
 	})
 
@@ -64,18 +64,11 @@ func newCommand() *cli.Command {
 		cmd.SetBool("byteMode", false)
 		num, err := parseNum(number)
 		if err != nil || num <= 0 {
-			return fmt.Errorf("invalid number of lines: '%s'", number)
+			return cli.ErrInvalidNumberOfLines(number)
 		}
 		cmd.SetInt("lines", num)
 		return nil
 	})
-
-	cmd.OnError = func(c *cli.Command, stderr io.Writer, err error) int {
-		if stderr != nil {
-			fmt.Fprintf(stderr, "%v\nTry '%s --help' for more information.\n", err, c.Name)
-		}
-		return 1
-	}
 
 	cmd.Run = func(c *cli.Command, stdin io.Reader, stdout, stderr io.Writer) error {
 		operands := c.Operands()
@@ -107,28 +100,21 @@ func newCommand() *cli.Command {
 		filesProcessed := 0
 
 		for _, filename := range operands {
-			var r io.Reader = stdin
-			var fileToClose io.Closer
-
-			if filename != "-" {
-				f, err := os.Open(filename)
-				if err != nil {
-					if printHeaders {
-						if filesProcessed > 0 {
-							fmt.Fprintln(writer)
-						}
-						fmt.Fprintf(writer, "==> %s <==\n", filename)
-						if fErr := writer.Flush(); fErr != nil && ioutils.IsBrokenPipe(fErr) {
-							break
-						}
-						filesProcessed++
+			r, fileToClose, err := ioutils.OpenInput(filename, stdin)
+			if err != nil {
+				if printHeaders {
+					if filesProcessed > 0 {
+						fmt.Fprintln(writer)
 					}
-					fmt.Fprintf(stderr, "head: cannot open '%s' for reading: %v\n", filename, err)
-					hasError = true
-					continue
+					fmt.Fprintf(writer, "==> %s <==\n", filename)
+					if fErr := writer.Flush(); fErr != nil && ioutils.IsBrokenPipe(fErr) {
+						break
+					}
+					filesProcessed++
 				}
-				r = f
-				fileToClose = f
+				c.Errorf(stderr, "%v", cli.ErrCannotOpenForReading(filename, err))
+				hasError = true
+				continue
 			}
 
 			if printHeaders {
@@ -141,23 +127,19 @@ func newCommand() *cli.Command {
 					fmt.Fprintf(writer, "==> %s <==\n", filename)
 				}
 				if err := writer.Flush(); err != nil && ioutils.IsBrokenPipe(err) {
-					if fileToClose != nil {
-						fileToClose.Close()
-					}
+					_ = fileToClose.Close()
 					break
 				}
 			}
 
-			err := headFile(r, writer, byteMode, byteCount, lineCount, delimiter)
-			if fileToClose != nil {
-				fileToClose.Close()
-			}
+			err = headFile(r, writer, byteMode, byteCount, lineCount, delimiter)
+			_ = fileToClose.Close()
 
 			if err != nil {
 				if ioutils.IsBrokenPipe(err) {
 					break
 				}
-				fmt.Fprintf(stderr, "head: error reading '%s': %v\n", filename, err)
+				c.Errorf(stderr, "%v", cli.ErrReadingFile(filename, err))
 				hasError = true
 			}
 

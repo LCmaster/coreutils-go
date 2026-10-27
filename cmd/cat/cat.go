@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/LCmaster/coreutils-go/pkg/cli"
 	"github.com/LCmaster/coreutils-go/pkg/fsutils"
 	"github.com/LCmaster/coreutils-go/pkg/ioutils"
 	"github.com/LCmaster/coreutils-go/pkg/strutils"
@@ -33,11 +34,6 @@ type StreamState struct {
 	PrevBlank  bool
 }
 
-func copyStream(out io.Writer, r io.Reader) error {
-	_, err := io.Copy(out, r)
-	return err
-}
-
 func processFile(filename string, stdin io.Reader, stdout io.Writer, opts CatOptions, state *StreamState, pipeline LineTransformer, w *bufio.Writer) error {
 	var r io.Reader = stdin
 	if filename != "-" {
@@ -49,11 +45,11 @@ func processFile(filename string, stdin io.Reader, stdout io.Writer, opts CatOpt
 
 		stat, err := f.Stat()
 		if err == nil && stat.IsDir() {
-			return fmt.Errorf("Is a directory")
+			return cli.ErrIsDirectory
 		}
 
 		if fsutils.IsSameAsOutput(f, stdout) {
-			return fmt.Errorf("input file is also the output")
+			return cli.ErrSameInputOutput
 		}
 		r = f
 	}
@@ -67,7 +63,8 @@ func processFile(filename string, stdin io.Reader, stdout io.Writer, opts CatOpt
 		_ = w.Flush()
 		out = stdout
 	}
-	return copyStream(out, r)
+	_, err := io.Copy(out, r)
+	return err
 }
 
 func processStream(w *bufio.Writer, r io.Reader, opts CatOptions, state *StreamState, transform LineTransformer) error {

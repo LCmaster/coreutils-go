@@ -14,22 +14,19 @@ func newCommand() *cli.Command {
 	cmd.SetDescription("Print the full filename of the current working directory.")
 	cmd.EnableAutoShortVersion()
 
-	// Default mode is Logical (physical = false)
-	cmd.Options.Bools["physical"] = false
-
 	cmd.FlagFunc('L', "logical", "use PWD from environment, even if it contains symlinks (default)", false, func(_ string) error {
-		cmd.Options.Bools["physical"] = false
+		cmd.SetBool("physical", false)
 		return nil
 	})
 	cmd.FlagFunc('P', "physical", "avoid all symlinks", false, func(_ string) error {
-		cmd.Options.Bools["physical"] = true
+		cmd.SetBool("physical", true)
 		return nil
 	})
 
 	cmd.Run = func(c *cli.Command, _ io.Reader, stdout, stderr io.Writer) error {
-		path, err := resolveWorkingDir(c.Options.Bool("physical"))
+		path, err := resolveWorkingDir(c.Bool("physical"))
 		if err != nil {
-			fmt.Fprintf(stderr, "pwd: %v\n", err)
+			c.Errorf(stderr, "%v", err)
 			return err
 		}
 		if _, err := fmt.Fprintln(stdout, path); err != nil && !ioutils.IsBrokenPipe(err) {

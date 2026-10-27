@@ -11,13 +11,19 @@ import (
 )
 
 func TestCommand_BasicFlags(t *testing.T) {
-	var verbose, quiet bool
-	var name string
-
 	cmd := NewCommand("test", "test [options] [files]...")
-	cmd.BoolVar(&verbose, 'v', "verbose", "verbose output")
-	cmd.BoolVar(&quiet, 'q', "quiet", "quiet mode")
-	cmd.StringVar(&name, 'n', "name", "target name")
+	cmd.FlagFunc('v', "verbose", "verbose output", false, func(_ string) error {
+		cmd.SetBool("verbose", true)
+		return nil
+	})
+	cmd.FlagFunc('q', "quiet", "quiet mode", false, func(_ string) error {
+		cmd.SetBool("quiet", true)
+		return nil
+	})
+	cmd.FlagFunc('n', "name", "target name", true, func(val string) error {
+		cmd.SetString("name", val)
+		return nil
+	})
 
 	err := cmd.Parse([]string{"-v", "--name=foo", "file1.txt"})
 	if err != nil {
@@ -26,39 +32,42 @@ func TestCommand_BasicFlags(t *testing.T) {
 	if cmd.Action() != ActionRun {
 		t.Errorf("action = %v, want ActionRun", cmd.Action())
 	}
-	if !verbose || quiet {
-		t.Errorf("verbose=%v, quiet=%v", verbose, quiet)
+	if !cmd.Bool("verbose") || cmd.Bool("quiet") {
+		t.Errorf("verbose=%v, quiet=%v", cmd.Bool("verbose"), cmd.Bool("quiet"))
 	}
-	if name != "foo" {
-		t.Errorf("name = %q, want 'foo'", name)
+	if cmd.String("name") != "foo" {
+		t.Errorf("name = %q, want 'foo'", cmd.String("name"))
 	}
 	if !reflect.DeepEqual(cmd.Operands(), []string{"file1.txt"}) {
 		t.Errorf("operands = %v, want ['file1.txt']", cmd.Operands())
 	}
-	if !reflect.DeepEqual(cmd.Args(), []string{"file1.txt"}) {
-		t.Errorf("args = %v, want ['file1.txt']", cmd.Args())
-	}
 }
 
 func TestCommand_ShortClusteringAndAttachedValue(t *testing.T) {
-	var quiet, zero bool
-	var lines string
-
 	cmd := NewCommand("test", "test")
-	cmd.BoolVar(&quiet, 'q', "quiet", "quiet mode")
-	cmd.BoolVar(&zero, 'z', "zero-terminated", "null delim")
-	cmd.StringVar(&lines, 'n', "lines", "lines count")
+	cmd.FlagFunc('q', "quiet", "quiet mode", false, func(_ string) error {
+		cmd.SetBool("quiet", true)
+		return nil
+	})
+	cmd.FlagFunc('z', "zero-terminated", "null delim", false, func(_ string) error {
+		cmd.SetBool("zero", true)
+		return nil
+	})
+	cmd.FlagFunc('n', "lines", "lines count", true, func(val string) error {
+		cmd.SetString("lines", val)
+		return nil
+	})
 
 	// Cluster -qz followed by -n with attached negative value -5
 	err := cmd.Parse([]string{"-qzn-5", "file.txt"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !quiet || !zero {
-		t.Errorf("quiet=%v, zero=%v, want true", quiet, zero)
+	if !cmd.Bool("quiet") || !cmd.Bool("zero") {
+		t.Errorf("quiet=%v, zero=%v, want true", cmd.Bool("quiet"), cmd.Bool("zero"))
 	}
-	if lines != "-5" {
-		t.Errorf("lines = %q, want '-5'", lines)
+	if cmd.String("lines") != "-5" {
+		t.Errorf("lines = %q, want '-5'", cmd.String("lines"))
 	}
 	if !reflect.DeepEqual(cmd.Operands(), []string{"file.txt"}) {
 		t.Errorf("operands = %v", cmd.Operands())
@@ -96,15 +105,17 @@ func TestCommand_NumericShorthand(t *testing.T) {
 }
 
 func TestCommand_EndOfOptions(t *testing.T) {
-	var verbose bool
 	cmd := NewCommand("test", "test")
-	cmd.BoolVar(&verbose, 'v', "verbose", "verbose")
+	cmd.FlagFunc('v', "verbose", "verbose", false, func(_ string) error {
+		cmd.SetBool("verbose", true)
+		return nil
+	})
 
 	err := cmd.Parse([]string{"--", "-v", "arg"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if verbose {
+	if cmd.Bool("verbose") {
 		t.Errorf("verbose should be false after '--'")
 	}
 	if !reflect.DeepEqual(cmd.Operands(), []string{"-v", "arg"}) {
@@ -138,22 +149,24 @@ func TestCommand_DefaultOperands(t *testing.T) {
 
 func TestCommand_OptionsResetOnRepeatedParse(t *testing.T) {
 	cmd := NewCommand("reset-test")
-	cmd.AddBool('v', "verbose", "verbose")
-	cmd.AddStringDefault('f', "format", "FMT", "format", "plain")
+	cmd.FlagFunc('v', "verbose", "verbose", false, func(_ string) error {
+		cmd.SetBool("verbose", true)
+		return nil
+	})
 
-	if err := cmd.Parse([]string{"-v", "--format=json"}); err != nil {
+	if err := cmd.Parse([]string{"-v"}); err != nil {
 		t.Fatal(err)
 	}
-	if !cmd.Bool("verbose") || cmd.String("format") != "json" {
-		t.Fatalf("expected verbose=true, format=json after first parse")
+	if !cmd.Bool("verbose") {
+		t.Fatalf("expected verbose=true after first parse")
 	}
 
-	// Second parse without flags should reset to defaults
+	// Second parse without flags should reset Options
 	if err := cmd.Parse([]string{}); err != nil {
 		t.Fatal(err)
 	}
-	if cmd.Bool("verbose") || cmd.String("format") != "plain" {
-		t.Errorf("options not reset on second parse: verbose=%v, format=%q", cmd.Bool("verbose"), cmd.String("format"))
+	if cmd.Bool("verbose") {
+		t.Errorf("options not reset on second parse: verbose=%v", cmd.Bool("verbose"))
 	}
 }
 
@@ -213,32 +226,35 @@ func TestCommand_Errors(t *testing.T) {
 }
 
 func TestCommand_StopOnUnknown(t *testing.T) {
-	var noNewline, escape bool
 	newEchoCommand := func() *Command {
 		cmd := NewCommand("echo", "echo [OPTIONS]... [STRING]...")
 		cmd.SetStopOnUnknown(true)
 		cmd.EnableAutoShortVersion()
-		cmd.BoolVar(&noNewline, 'n', "", "no newline")
-		cmd.BoolVar(&escape, 'e', "", "enable escape")
+		cmd.FlagFunc('n', "", "no newline", false, func(_ string) error {
+			cmd.SetBool("noNewline", true)
+			return nil
+		})
+		cmd.FlagFunc('e', "", "enable escape", false, func(_ string) error {
+			cmd.SetBool("escape", true)
+			return nil
+		})
 		return cmd
 	}
 
 	// 1. Regular flag group then operands
 	cmd := newEchoCommand()
 	err := cmd.Parse([]string{"-ne", "hello", "world"})
-	if err != nil || !noNewline || !escape {
-		t.Fatalf("unexpected: err=%v noNewline=%v escape=%v", err, noNewline, escape)
+	if err != nil || !cmd.Bool("noNewline") || !cmd.Bool("escape") {
+		t.Fatalf("unexpected: err=%v noNewline=%v escape=%v", err, cmd.Bool("noNewline"), cmd.Bool("escape"))
 	}
 	if !reflect.DeepEqual(cmd.Operands(), []string{"hello", "world"}) {
 		t.Errorf("operands = %v, want ['hello', 'world']", cmd.Operands())
 	}
 
 	// 2. Cluster with unknown flag is not executed and passed as operand
-	noNewline = false
-	escape = false
 	cmd = newEchoCommand()
 	err = cmd.Parse([]string{"-nx", "hello"})
-	if err != nil || noNewline {
+	if err != nil || cmd.Bool("noNewline") {
 		t.Fatalf("noNewline should remain false for invalid cluster -nx")
 	}
 	if !reflect.DeepEqual(cmd.Operands(), []string{"-nx", "hello"}) {
@@ -246,10 +262,9 @@ func TestCommand_StopOnUnknown(t *testing.T) {
 	}
 
 	// 3. First non-flag stops option processing
-	noNewline = false
 	cmd = newEchoCommand()
 	err = cmd.Parse([]string{"hello", "-n"})
-	if err != nil || noNewline {
+	if err != nil || cmd.Bool("noNewline") {
 		t.Fatalf("noNewline should not be parsed after non-flag")
 	}
 	if !reflect.DeepEqual(cmd.Operands(), []string{"hello", "-n"}) {
@@ -325,7 +340,6 @@ func TestCommand_Execute(t *testing.T) {
 		return nil
 	}
 
-
 	// 1. Successful execution
 	err := cmd.Execute([]string{}, nil, nil, nil)
 	if err != nil || !executed {
@@ -349,117 +363,24 @@ func TestCommand_Execute(t *testing.T) {
 	if err == nil || !strings.Contains(errBuf.String(), "custom:") {
 		t.Fatalf("expected custom error, got %v: %q", err, errBuf.String())
 	}
-
-	// 4. Default execution using SetArgs without explicit arguments
-	executed = false
-	cmd.SetArgs([]string{})
-	cmd.SetStreams(nil, &helpBuf, &errBuf)
-	err = cmd.Execute()
-	if err != nil || !executed {
-		t.Fatalf("expected err nil without arguments, got %v", err)
-	}
 }
 
-func TestCommand_HybridOptions(t *testing.T) {
-	cmd := NewCommand("hybrid", "hybrid [OPTIONS]")
+func TestCommand_OptionsSettersAndGetters(t *testing.T) {
+	cmd := NewCommand("opts", "opts [OPTIONS]")
 
-	// 1. Direct AddBool, AddString, AddInt with defaults
-	cmd.AddBool('v', "verbose", "verbose output")
-	cmd.AddBoolDefault('d', "dry-run", "dry run", true)
-	cmd.AddString('o', "output", "output target")
-	cmd.AddStringDefault('f', "format", "FMT", "output format", "text")
-	cmd.AddInt('n', "count", "iteration count")
-	cmd.AddIntDefault('p', "port", "PORT", "service port", 8080)
-
-	// Verify defaults before parse
-	if !cmd.Bool("dry-run") || !cmd.Bool("d") {
-		t.Errorf("expected dry-run default true, got %v", cmd.Bool("dry-run"))
-	}
-	if cmd.String("format") != "text" || cmd.String("f") != "text" {
-		t.Errorf("expected format default 'text', got %q", cmd.String("format"))
-	}
-	if cmd.Int("port") != 8080 || cmd.Int("p") != 8080 {
-		t.Errorf("expected port default 8080, got %d", cmd.Int("port"))
-	}
-
-	// 2. Parse arguments mutating options
-	err := cmd.Parse([]string{"-v", "-o", "report.json", "--format=json", "-n", "42", "--port=9090"})
-	if err != nil {
-		t.Fatalf("unexpected parse error: %v", err)
-	}
-
-	if !cmd.Bool("verbose") || !cmd.Bool("v") {
-		t.Errorf("expected verbose=true, got %v", cmd.Bool("verbose"))
-	}
-	if cmd.String("output") != "report.json" || cmd.String("o") != "report.json" {
-		t.Errorf("expected output='report.json', got %q", cmd.String("output"))
-	}
-	if cmd.String("format") != "json" || cmd.String("f") != "json" {
-		t.Errorf("expected format='json', got %q", cmd.String("format"))
-	}
-	if cmd.Int("count") != 42 || cmd.Int("n") != 42 {
-		t.Errorf("expected count=42, got %d", cmd.Int("count"))
-	}
-	if cmd.Int("port") != 9090 || cmd.Int("p") != 9090 {
-		t.Errorf("expected port=9090, got %d", cmd.Int("port"))
-	}
-
-	// 3. HasBool, HasString, HasInt
-	if !cmd.HasBool("verbose") || cmd.HasBool("non-existent") {
-		t.Errorf("HasBool check failed")
-	}
-	if !cmd.HasString("format") || cmd.HasString("non-existent") {
-		t.Errorf("HasString check failed")
-	}
-	if !cmd.HasInt("port") || cmd.HasInt("non-existent") {
-		t.Errorf("HasInt check failed")
-	}
-
-	// 4. Manual Setters
 	cmd.SetBool("custom-flag", true)
-	if !cmd.Bool("custom-flag") || !cmd.Options.Bools["custom-flag"] {
-		t.Errorf("SetBool failed")
+	if !cmd.Bool("custom-flag") || !cmd.HasBool("custom-flag") || cmd.HasBool("missing") {
+		t.Errorf("Bool / HasBool failed")
 	}
 
 	cmd.SetString("custom-str", "hello")
-	if cmd.String("custom-str") != "hello" || cmd.Options.Strings["custom-str"] != "hello" {
-		t.Errorf("SetString failed")
+	if cmd.String("custom-str") != "hello" || !cmd.HasString("custom-str") || cmd.HasString("missing") {
+		t.Errorf("String / HasString failed")
 	}
 
 	cmd.SetInt("custom-int", 123)
-	if cmd.Int("custom-int") != 123 || cmd.Options.Ints["custom-int"] != 123 {
-		t.Errorf("SetInt failed")
-	}
-
-	// 5. Pointer-based BoolVar, StringVar, IntVar also tracking in Options
-	var flagBool bool
-	var flagStr string
-	var flagInt int
-	cmd2 := NewCommand("ptr-test")
-	cmd2.BoolVar(&flagBool, 'b', "bool-flag", "flag")
-	cmd2.StringVar(&flagStr, 's', "str-flag", "str")
-	cmd2.IntVar(&flagInt, 'i', "int-flag", "int")
-
-	err = cmd2.Parse([]string{"-b", "--str-flag=val", "-i", "100"})
-	if err != nil {
-		t.Fatalf("unexpected parse error: %v", err)
-	}
-	if !flagBool || !cmd2.Bool("bool-flag") || !cmd2.Bool("b") {
-		t.Errorf("BoolVar hybrid sync failed")
-	}
-	if flagStr != "val" || cmd2.String("str-flag") != "val" || cmd2.String("s") != "val" {
-		t.Errorf("StringVar hybrid sync failed")
-	}
-	if flagInt != 100 || cmd2.Int("int-flag") != 100 || cmd2.Int("i") != 100 {
-		t.Errorf("IntVar hybrid sync failed")
-	}
-
-	// 6. Invalid integer argument returns error
-	cmd3 := NewCommand("int-err")
-	cmd3.AddInt('n', "num", "number")
-	err = cmd3.Parse([]string{"-n", "not-a-number"})
-	if err == nil {
-		t.Errorf("expected error for invalid integer argument, got nil")
+	if cmd.Int("custom-int") != 123 || !cmd.HasInt("custom-int") || cmd.HasInt("missing") {
+		t.Errorf("Int / HasInt failed")
 	}
 }
 
@@ -577,28 +498,14 @@ func TestCommand_FlagAliases(t *testing.T) {
 			return nil
 		})
 
-		// Trigger via short flag -q
-		if err := cmd.Parse([]string{"-q"}); err != nil {
-			t.Fatalf("unexpected error for -q: %v", err)
+		if err := cmd.Parse([]string{"-q"}); err != nil || quietCount != 1 {
+			t.Fatalf("unexpected: err=%v, quietCount=%d", err, quietCount)
 		}
-		if quietCount != 1 {
-			t.Errorf("expected quietCount=1, got %d", quietCount)
+		if err := cmd.Parse([]string{"--quiet"}); err != nil || quietCount != 2 {
+			t.Fatalf("unexpected: err=%v, quietCount=%d", err, quietCount)
 		}
-
-		// Trigger via first alias --quiet
-		if err := cmd.Parse([]string{"--quiet"}); err != nil {
-			t.Fatalf("unexpected error for --quiet: %v", err)
-		}
-		if quietCount != 2 {
-			t.Errorf("expected quietCount=2, got %d", quietCount)
-		}
-
-		// Trigger via second alias --silent
-		if err := cmd.Parse([]string{"--silent"}); err != nil {
-			t.Fatalf("unexpected error for --silent: %v", err)
-		}
-		if quietCount != 3 {
-			t.Errorf("expected quietCount=3, got %d", quietCount)
+		if err := cmd.Parse([]string{"--silent"}); err != nil || quietCount != 3 {
+			t.Fatalf("unexpected: err=%v, quietCount=%d", err, quietCount)
 		}
 	})
 
@@ -610,37 +517,11 @@ func TestCommand_FlagAliases(t *testing.T) {
 			return nil
 		})
 
-		if err := cmd.Parse([]string{"--lines=42"}); err != nil {
-			t.Fatalf("unexpected error: %v", err)
+		if err := cmd.Parse([]string{"--lines=42"}); err != nil || receivedVal != "42" {
+			t.Fatalf("unexpected: err=%v, val=%q", err, receivedVal)
 		}
-		if receivedVal != "42" {
-			t.Errorf("expected '42', got %q", receivedVal)
-		}
-
-		if err := cmd.Parse([]string{"--max-lines", "100"}); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if receivedVal != "100" {
-			t.Errorf("expected '100', got %q", receivedVal)
-		}
-	})
-
-	t.Run("AddBool with multiple aliases tracks options for all names", func(t *testing.T) {
-		cmd := NewCommand("test")
-		cmd.AddBool('q', "quiet, silent", "suppress output")
-
-		if cmd.Bool("quiet") || cmd.Bool("silent") {
-			t.Errorf("expected initial false for aliases")
-		}
-
-		if err := cmd.Parse([]string{"--silent"}); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		if !cmd.Bool("quiet") || !cmd.Bool("silent") || !cmd.Bool("q") {
-			t.Errorf("expected all aliases to be true, got quiet=%v, silent=%v, q=%v",
-				cmd.Bool("quiet"), cmd.Bool("silent"), cmd.Bool("q"))
+		if err := cmd.Parse([]string{"--max-lines", "100"}); err != nil || receivedVal != "100" {
+			t.Fatalf("unexpected: err=%v, val=%q", err, receivedVal)
 		}
 	})
 }
-

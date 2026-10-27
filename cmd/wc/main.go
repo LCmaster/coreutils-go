@@ -87,15 +87,11 @@ func countReader(r io.Reader) (wcCounts, error) {
 }
 
 func readFiles0From(source string, stdin io.Reader) ([]string, error) {
-	var r io.Reader = stdin
-	if source != "-" {
-		f, err := os.Open(source)
-		if err != nil {
-			return nil, fmt.Errorf("cannot open '%s' for reading: %v", source, err)
-		}
-		defer f.Close()
-		r = f
+	r, closer, err := ioutils.OpenInput(source, stdin)
+	if err != nil {
+		return nil, cli.ErrCannotOpenForReading(source, err)
 	}
+	defer closer.Close()
 
 	data, err := io.ReadAll(r)
 	if err != nil {
@@ -213,13 +209,6 @@ func newCommand() *cli.Command {
 		return nil
 	})
 
-	cmd.OnError = func(c *cli.Command, stderr io.Writer, err error) int {
-		if stderr != nil {
-			fmt.Fprintf(stderr, "%v\nTry '%s --help' for more information.\n", err, c.Name)
-		}
-		return 1
-	}
-
 	cmd.Run = func(c *cli.Command, stdin io.Reader, stdout, stderr io.Writer) error {
 		showLines := c.Bool("lines")
 		showWords := c.Bool("words")
@@ -241,14 +230,10 @@ func newCommand() *cli.Command {
 		operands := c.Operands()
 		if c.HasString("files0-from") {
 			files0From := c.String("files0-from")
-			if files0From == "" {
-				fmt.Fprintf(stderr, "wc: cannot open '' for reading: No such file or directory\n")
-				return cli.ErrExitFailure
-			}
 			var err error
 			operands, err = readFiles0From(files0From, stdin)
 			if err != nil {
-				fmt.Fprintf(stderr, "wc: %v\n", err)
+				c.Errorf(stderr, "%v", err)
 				return cli.ErrExitFailure
 			}
 		}
@@ -267,32 +252,23 @@ func newCommand() *cli.Command {
 
 		for _, filename := range operands {
 			if filename == "" {
-				fmt.Fprintf(stderr, "wc: invalid zero-length file name\n")
+				c.Errorf(stderr, "%v", cli.ErrZeroLengthFileName)
 				hasError = true
 				continue
 			}
 
-			var r io.Reader = stdin
-			var fileToClose io.Closer
-
-			if filename != "-" {
-				f, err := os.Open(filename)
-				if err != nil {
-					fmt.Fprintf(stderr, "wc: %s: %v\n", filename, err)
-					hasError = true
-					continue
-				}
-				r = f
-				fileToClose = f
+			r, fileToClose, err := ioutils.OpenInput(filename, stdin)
+			if err != nil {
+				c.FileError(stderr, filename, err)
+				hasError = true
+				continue
 			}
 
 			counts, err := countReader(r)
-			if fileToClose != nil {
-				fileToClose.Close()
-			}
+			_ = fileToClose.Close()
 
 			if err != nil {
-				fmt.Fprintf(stderr, "wc: %s: %v\n", filename, err)
+				c.FileError(stderr, filename, err)
 				hasError = true
 				continue
 			}

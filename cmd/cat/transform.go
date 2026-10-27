@@ -7,15 +7,7 @@ import (
 	"github.com/LCmaster/coreutils-go/pkg/strutils"
 )
 
-type LineTransformer func([]byte) []byte
-
-func Pipe(transformers ...LineTransformer) LineTransformer {
-	transforms := make([]func([]byte) []byte, len(transformers))
-	for i, t := range transformers {
-		transforms[i] = t
-	}
-	return fn.Pipe(transforms...)
-}
+type LineTransformer = func([]byte) []byte
 
 func newFormatPipeline(opts CatOptions) LineTransformer {
 	var stages []LineTransformer
@@ -29,9 +21,9 @@ func newFormatPipeline(opts CatOptions) LineTransformer {
 		stages = append(stages, formatEnds)
 	}
 	if len(stages) == 0 {
-		return func(line []byte) []byte { return line } // Identity
+		return func(line []byte) []byte { return line }
 	}
-	return Pipe(stages...)
+	return fn.Pipe(stages...)
 }
 
 func formatTabs(line []byte) []byte {

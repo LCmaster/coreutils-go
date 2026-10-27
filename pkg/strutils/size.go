@@ -7,38 +7,36 @@ import (
 	"strings"
 )
 
-var sizeSuffixes = []struct {
-	suffix     string
-	multiplier int64
-}{
-	{"KiB", 1024},
-	{"MiB", 1024 * 1024},
-	{"GiB", 1024 * 1024 * 1024},
-	{"TiB", 1024 * 1024 * 1024 * 1024},
-	{"PiB", 1024 * 1024 * 1024 * 1024 * 1024},
-	{"EiB", 1024 * 1024 * 1024 * 1024 * 1024 * 1024},
+const unitPowers = "kmgtpe"
 
-	{"kB", 1000},
-	{"KB", 1000},
-	{"MB", 1000 * 1000},
-	{"GB", 1000 * 1000 * 1000},
-	{"TB", 1000 * 1000 * 1000 * 1000},
-	{"PB", 1000 * 1000 * 1000 * 1000 * 1000},
-	{"EB", 1000 * 1000 * 1000 * 1000 * 1000 * 1000},
+func matchSuffixMultiplier(s string) (trimmed string, mult int64) {
+	if strings.HasSuffix(s, "b") && !strings.HasSuffix(s, "ib") && !strings.HasSuffix(s, "kb") && !strings.HasSuffix(s, "mb") && !strings.HasSuffix(s, "gb") && !strings.HasSuffix(s, "tb") && !strings.HasSuffix(s, "pb") && !strings.HasSuffix(s, "eb") {
+		return s[:len(s)-1], 512
+	}
 
-	{"b", 512},
-	{"k", 1024},
-	{"K", 1024},
-	{"m", 1024 * 1024},
-	{"M", 1024 * 1024},
-	{"g", 1024 * 1024 * 1024},
-	{"G", 1024 * 1024 * 1024},
-	{"t", 1024 * 1024 * 1024 * 1024},
-	{"T", 1024 * 1024 * 1024 * 1024},
-	{"p", 1024 * 1024 * 1024 * 1024 * 1024},
-	{"P", 1024 * 1024 * 1024 * 1024 * 1024},
-	{"e", 1024 * 1024 * 1024 * 1024 * 1024 * 1024},
-	{"E", 1024 * 1024 * 1024 * 1024 * 1024 * 1024},
+	var base int64 = 1024
+	rest := s
+	if strings.HasSuffix(rest, "iB") {
+		rest = rest[:len(rest)-2]
+	} else if strings.HasSuffix(rest, "B") {
+		base = 1000
+		rest = rest[:len(rest)-1]
+	}
+
+	if len(rest) == 0 {
+		return s, 1
+	}
+	last := rest[len(rest)-1]
+	idx := strings.IndexByte(unitPowers, last|0x20)
+	if idx == -1 || (base == 1000 && idx == -1) {
+		return s, 1
+	}
+
+	mult = 1
+	for range idx + 1 {
+		mult *= base
+	}
+	return rest[:len(rest)-1], mult
 }
 
 // ParseByteSize parses a signed or unsigned integer string with an optional GNU coreutils
@@ -59,15 +57,7 @@ func ParseByteSize(s string) (int, error) {
 		return 0, fmt.Errorf("missing number")
 	}
 
-	var mult int64 = 1
-	for _, entry := range sizeSuffixes {
-		if strings.HasSuffix(s, entry.suffix) {
-			mult = entry.multiplier
-			s = s[:len(s)-len(entry.suffix)]
-			break
-		}
-	}
-
+	s, mult := matchSuffixMultiplier(s)
 	if s == "" {
 		return 0, fmt.Errorf("missing number digits")
 	}
@@ -87,4 +77,3 @@ func ParseByteSize(s string) (int, error) {
 	}
 	return int(val), nil
 }
-

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -20,17 +21,23 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "failed to create temp dir: %v\n", err)
 		os.Exit(1)
 	}
-	defer os.RemoveAll(tmpDir)
 
-	bin := filepath.Join(tmpDir, "yes.exe")
+	name := "yes"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	bin := filepath.Join(tmpDir, name)
 	cmd := exec.Command("go", "build", "-o", bin, ".")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to build yes binary: %v\n%s\n", err, out)
+		_ = os.RemoveAll(tmpDir)
 		os.Exit(1)
 	}
 	binaryPath = bin
 
-	os.Exit(m.Run())
+	code := m.Run()
+	_ = os.RemoveAll(tmpDir)
+	os.Exit(code)
 }
 
 func runYesCLI(t *testing.T, args ...string) (string, string, error) {
@@ -41,31 +48,6 @@ func runYesCLI(t *testing.T, args ...string) (string, string, error) {
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	return stdout.String(), stderr.String(), err
-}
-
-func captureStdout(f func() error) (string, error) {
-	oldStdout := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		return "", err
-	}
-	os.Stdout = w
-
-	outChan := make(chan string)
-	go func() {
-		var buf bytes.Buffer
-		io.Copy(&buf, r)
-		outChan <- buf.String()
-	}()
-
-	execErr := f()
-
-	w.Close()
-	os.Stdout = oldStdout
-	out := <-outChan
-	r.Close()
-
-	return out, execErr
 }
 
 // readNLines reads up to n lines from r using bufio.Scanner and verifies each line equals expected.
@@ -352,16 +334,16 @@ func TestYes_CLI_MultipleArgsWithFlags(t *testing.T) {
 }
 
 func TestUnit_PrintHelp(t *testing.T) {
-	help := getHelpStr()
+	help := newCommand().Help()
 	for _, snippet := range []string{"Usage:", "yes", "Description:", "-h, --help", "-v, --version"} {
 		if !strings.Contains(help, snippet) {
-			t.Errorf("getHelpStr() missing snippet %q", snippet)
+			t.Errorf("newCommand().Help() missing snippet %q", snippet)
 		}
 	}
 }
 
 func TestUnit_PrintVersion(t *testing.T) {
-	ver := getVersionStr()
+	ver := newCommand().Version()
 	if ver != "yes (coreutils-go) 0.1.0" {
 		t.Errorf("expected 'yes (coreutils-go) 0.1.0', got %q", ver)
 	}
@@ -393,9 +375,8 @@ func (lw *limitWriter) Write(p []byte) (n int, err error) {
 func BenchmarkYes_Throughput_Default(b *testing.B) {
 	bytesPerIteration := int64(10 * 1024 * 1024) // 10 MB per iteration
 	b.SetBytes(bytesPerIteration)
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		lw := &limitWriter{w: io.Discard, remain: bytesPerIteration}
 		_ = runYes(lw, nil)
 	}
@@ -404,9 +385,8 @@ func BenchmarkYes_Throughput_Default(b *testing.B) {
 func BenchmarkYes_Throughput_ShortWord(b *testing.B) {
 	bytesPerIteration := int64(10 * 1024 * 1024)
 	b.SetBytes(bytesPerIteration)
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		lw := &limitWriter{w: io.Discard, remain: bytesPerIteration}
 		_ = runYes(lw, []string{"confirm"})
 	}
@@ -415,10 +395,9 @@ func BenchmarkYes_Throughput_ShortWord(b *testing.B) {
 func BenchmarkYes_Throughput_LongSentence(b *testing.B) {
 	bytesPerIteration := int64(10 * 1024 * 1024)
 	b.SetBytes(bytesPerIteration)
-	b.ResetTimer()
 
 	sentence := []string{"The", "quick", "brown", "fox", "jumps", "over", "the", "lazy", "dog"}
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		lw := &limitWriter{w: io.Discard, remain: bytesPerIteration}
 		_ = runYes(lw, sentence)
 	}

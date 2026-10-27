@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/LCmaster/coreutils-go/pkg/cli"
-	"github.com/LCmaster/coreutils-go/pkg/fsutils"
 )
 
 var binaryPath string
@@ -23,7 +21,6 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "failed to create temp dir: %v\n", err)
 		os.Exit(1)
 	}
-	defer os.RemoveAll(tmpDir)
 
 	binName := "pwd"
 	if runtime.GOOS == "windows" {
@@ -34,11 +31,14 @@ func TestMain(m *testing.M) {
 	build := exec.Command("go", "build", "-o", bin, ".")
 	if out, err := build.CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to build pwd binary: %v\n%s\n", err, out)
+		_ = os.RemoveAll(tmpDir)
 		os.Exit(1)
 	}
 	binaryPath = bin
 
-	os.Exit(m.Run())
+	code := m.Run()
+	_ = os.RemoveAll(tmpDir)
+	os.Exit(code)
 }
 
 // ---------------------------------------------------------------------------
@@ -67,33 +67,6 @@ func runPwd(t *testing.T, workDir string, env []string, args ...string) (string,
 		}
 	}
 	return stdout.String(), stderr.String(), code
-}
-
-func captureStdout(f func() error) (string, error) {
-	oldStdout := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		return "", err
-	}
-	os.Stdout = w
-
-	outChan := make(chan string)
-	go func() {
-		var buf bytes.Buffer
-		_, _ = io.Copy(&buf, r)
-		outChan <- buf.String()
-	}()
-
-	ferr := f()
-	_ = w.Close()
-	os.Stdout = oldStdout
-	out := <-outChan
-	_ = r.Close()
-
-	if ferr != nil {
-		return out, ferr
-	}
-	return out, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -129,59 +102,8 @@ func TestUnit_PrintVersion(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Unit tests: Functional Combinators & Predicates
+// Unit tests: Directory Resolvers
 // ---------------------------------------------------------------------------
-
-func TestUnit_Functional_SplitPathSegments(t *testing.T) {
-	segments := fsutils.SplitSegments("/a/b//c/d/")
-	expected := []string{"a", "b", "c", "d"}
-	if len(segments) != len(expected) {
-		t.Fatalf("splitPathSegments() got %v, want %v", segments, expected)
-	}
-	for i, seg := range segments {
-		if seg != expected[i] {
-			t.Errorf("segment[%d] = %q, want %q", i, seg, expected[i])
-		}
-	}
-}
-
-func TestUnit_HasDotComponents(t *testing.T) {
-	tests := []struct {
-		path string
-		want bool
-	}{
-		{"/a/b/c", false},
-		{"/a/./b", true},
-		{"/a/../b", true},
-		{".", true},
-		{"..", true},
-		{"", false},
-	}
-	for _, tt := range tests {
-		got := hasDotComponents(tt.path)
-		if got != tt.want {
-			t.Errorf("hasDotComponents(%q) = %v, want %v", tt.path, got, tt.want)
-		}
-	}
-}
-
-func TestUnit_Functional_AllPredicates(t *testing.T) {
-	alwaysTrue := func(string) bool { return true }
-	alwaysFalse := func(string) bool { return false }
-
-	if !allPredicates(alwaysTrue, alwaysTrue)("test") {
-		t.Error("allPredicates(true, true) should be true")
-	}
-	if allPredicates(alwaysTrue, alwaysFalse)("test") {
-		t.Error("allPredicates(true, false) should be false")
-	}
-	if allPredicates(alwaysFalse, alwaysTrue)("test") {
-		t.Error("allPredicates(false, true) should be false")
-	}
-	if !allPredicates()("test") {
-		t.Error("empty allPredicates() should be true")
-	}
-}
 
 func TestUnit_ResolveLogicalDir_FallsBackOnInvalidPWD(t *testing.T) {
 	physical, err := resolvePhysicalDir()
@@ -380,15 +302,6 @@ func TestUnit_Run(t *testing.T) {
 	err = newCommand().Execute([]string{}, nil, &outRun, &errRun)
 	if err != nil || outRun.Len() == 0 || errRun.Len() > 0 {
 		t.Errorf("Execute() err=%v, stdout=%q, stderr=%q", err, outRun.String(), errRun.String())
-	}
-}
-
-func TestUnit_IsBrokenPipe(t *testing.T) {
-	if isBrokenPipe(nil) {
-		t.Error("nil should not be broken pipe")
-	}
-	if !isBrokenPipe(fmt.Errorf("write: broken pipe")) {
-		t.Error("expected broken pipe to be detected")
 	}
 }
 

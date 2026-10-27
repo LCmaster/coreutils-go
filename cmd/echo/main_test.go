@@ -3,10 +3,10 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -16,23 +16,28 @@ import (
 var binaryPath string
 
 func TestMain(m *testing.M) {
-	// Build binary to a temporary directory for CLI end-to-end integration tests
 	tmpDir, err := os.MkdirTemp("", "echo-test-*")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create temp dir: %v\n", err)
 		os.Exit(1)
 	}
-	defer os.RemoveAll(tmpDir)
 
-	bin := filepath.Join(tmpDir, "echo.exe")
+	name := "echo"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	bin := filepath.Join(tmpDir, name)
 	cmd := exec.Command("go", "build", "-o", bin, ".")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to build echo binary: %v\n%s\n", err, out)
+		_ = os.RemoveAll(tmpDir)
 		os.Exit(1)
 	}
 	binaryPath = bin
 
-	os.Exit(m.Run())
+	code := m.Run()
+	_ = os.RemoveAll(tmpDir)
+	os.Exit(code)
 }
 
 // runEcho runs the compiled echo binary with the given arguments and returns stdout, stderr, and exit error.
@@ -44,32 +49,6 @@ func runEcho(t *testing.T, args ...string) (string, string, error) {
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	return stdout.String(), stderr.String(), err
-}
-
-// captureStdout redirects os.Stdout during f() and returns the captured output.
-func captureStdout(f func()) (string, error) {
-	oldStdout := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		return "", err
-	}
-	os.Stdout = w
-
-	outChan := make(chan string)
-	go func() {
-		var buf bytes.Buffer
-		io.Copy(&buf, r)
-		outChan <- buf.String()
-	}()
-
-	f()
-
-	w.Close()
-	os.Stdout = oldStdout
-	out := <-outChan
-	r.Close()
-
-	return out, nil
 }
 
 func TestEcho_BasicOutput(t *testing.T) {
@@ -591,28 +570,11 @@ func TestUnit_FormatEcho(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := FormatEcho(tt.args, tt.opts)
+			got := FormatEcho(tt.args, &tt.opts)
 			if got != tt.want {
 				t.Errorf("FormatEcho(%v, %+v) = %q, want %q", tt.args, tt.opts, got, tt.want)
 			}
 		})
-	}
-}
-
-func TestUnit_Transformers(t *testing.T) {
-	out, halt := IdentityTransformer("hello\\nworld")
-	if out != "hello\\nworld" || halt {
-		t.Errorf("IdentityTransformer failed: got (%q, %v)", out, halt)
-	}
-
-	out, halt = EscapeTransformer("hello\\nworld")
-	if out != "hello\nworld" || halt {
-		t.Errorf("EscapeTransformer failed: got (%q, %v)", out, halt)
-	}
-
-	out, halt = EscapeTransformer("stop\\chere")
-	if out != "stop" || !halt {
-		t.Errorf("EscapeTransformer with \\c failed: got (%q, %v)", out, halt)
 	}
 }
 

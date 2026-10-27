@@ -52,30 +52,16 @@ func Opt(short rune, long, arg, description string) HelpOption {
 	}
 }
 
-// HelpConfig contains all information needed to generate a standardized GNU help page.
+// HelpConfig contains all documentation metadata needed to generate a standardized GNU help manual.
 type HelpConfig struct {
-	Usage       []string     // Synopses: e.g. ["cat [OPTION]... [FILE]..."] or ["yes [STRING]...", "yes OPTION"]
+	Usage       []string     // Synopses: e.g. ["cat [OPTION]... [FILE]..."]
 	Description string       // Utility description / summary
 	Options     []HelpOption // Registered command-line options
-	Notes       string       // Optional extra notes / format descriptions (e.g., escape sequences, multipliers)
+	Notes       string       // Optional extra notes / format descriptions
 	Examples    []string     // Optional example command lines
 }
 
 // FormatHelp renders a standardized, POSIX/GNU-compliant help manual.
-// Output layout:
-//
-//	Usage: <synopsis 1>
-//	  or:  <synopsis 2>
-//
-//	Description:
-//	<description>
-//
-//	  <flags>    <description>
-//
-//	<notes>
-//
-//	Examples:
-//	  <example 1>
 func FormatHelp(cfg HelpConfig) string {
 	var b strings.Builder
 
@@ -119,10 +105,7 @@ func FormatHelp(cfg HelpConfig) string {
 			}
 
 			flagWidth := utf8.RuneCountInString(opt.Flags)
-			padding := (flagColWidth + 2) - flagWidth
-			if padding < 2 {
-				padding = 2
-			}
+			padding := max((flagColWidth+2)-flagWidth, 2)
 			b.WriteString(strings.Repeat(" ", padding))
 			b.WriteString(descLines[0])
 			b.WriteString("\n")
@@ -156,47 +139,71 @@ func FormatHelp(cfg HelpConfig) string {
 	return b.String()
 }
 
-// CmdHelper manages command documentation and formats standardized GNU help manuals.
-type CmdHelper struct {
-	Name        string
-	Usage       []string
-	Description string
-	Notes       string
-	Examples    []string
-	ExtraFlags  []HelpOption // For synthetic or non-parsed flags (e.g. legacy options or manual help entries)
+// SetUsage sets or overrides the usage synopsis lines for the command.
+func (c *Command) SetUsage(usage ...string) {
+	c.Helper.Usage = usage
+	for _, u := range usage {
+		if strings.Contains(u, "[ignored command line arguments]") {
+			c.Config.SoleArgumentHelpVersion = true
+		}
+	}
 }
 
-// SetUsage sets or replaces the usage synopsis lines.
-func (h *CmdHelper) SetUsage(usage ...string) {
-	h.Usage = usage
+// SetDescription sets the command description for the help manual.
+func (c *Command) SetDescription(desc string) {
+	c.Helper.Description = desc
 }
 
-// SetDescription sets the command description.
-func (h *CmdHelper) SetDescription(desc string) {
-	h.Description = desc
+// SetNotes sets extra syntax details or format descriptions for the help manual.
+func (c *Command) SetNotes(notes string) {
+	c.Helper.Notes = notes
 }
 
-// SetNotes sets notes / format descriptions.
-func (h *CmdHelper) SetNotes(notes string) {
-	h.Notes = notes
+// AddExample adds an example usage line to the help manual.
+func (c *Command) AddExample(example string) {
+	c.Helper.Examples = append(c.Helper.Examples, example)
 }
 
-// AddExample adds an example usage line.
-func (h *CmdHelper) AddExample(example string) {
-	h.Examples = append(h.Examples, example)
+// AddHelpOption adds a manual / synthetic option to the help manual.
+func (c *Command) AddHelpOption(opt HelpOption) {
+	c.Helper.Options = append(c.Helper.Options, opt)
 }
 
-// Format renders the complete help manual using the provided options slice.
-func (h CmdHelper) Format(options []HelpOption) string {
-	allOptions := make([]HelpOption, 0, len(options)+len(h.ExtraFlags))
-	allOptions = append(allOptions, options...)
-	allOptions = append(allOptions, h.ExtraFlags...)
+// Help formats the complete GNU help manual using registered flags and documentation metadata.
+func (c *Command) Help() string {
+	options := append(c.Flags.ToHelpOptions(), c.Helper.Options...)
+
+	hasHelp := false
+	hasVersion := false
+	for _, opt := range options {
+		if strings.Contains(opt.Flags, "--help") {
+			hasHelp = true
+		}
+		if strings.Contains(opt.Flags, "--version") {
+			hasVersion = true
+		}
+	}
+
+	if c.Config.AutoHelp && !hasHelp {
+		short := rune(0)
+		if c.Config.AutoShortHelp {
+			short = 'h'
+		}
+		options = append(options, Opt(short, "help", "", "display this help and exit"))
+	}
+	if c.Config.AutoVersion && !hasVersion {
+		short := rune(0)
+		if c.Config.AutoShortVersion {
+			short = 'v'
+		}
+		options = append(options, Opt(short, "version", "", "output version information and exit"))
+	}
 
 	return FormatHelp(HelpConfig{
-		Usage:       h.Usage,
-		Description: h.Description,
-		Options:     allOptions,
-		Notes:       h.Notes,
-		Examples:    h.Examples,
+		Usage:       c.Helper.Usage,
+		Description: c.Helper.Description,
+		Options:     options,
+		Notes:       c.Helper.Notes,
+		Examples:    c.Helper.Examples,
 	})
 }

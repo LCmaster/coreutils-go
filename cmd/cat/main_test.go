@@ -10,12 +10,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
-
-	"github.com/LCmaster/coreutils-go/pkg/fsutils"
-	"github.com/LCmaster/coreutils-go/pkg/ioutils"
 )
 
 var binaryPath string
@@ -142,19 +138,6 @@ func TestUnit_FormatEnds(t *testing.T) {
 	}
 }
 
-func TestUnit_Pipe(t *testing.T) {
-	upper := func(b []byte) []byte {
-		return bytes.ToUpper(b)
-	}
-	pipeline := Pipe(formatTabs, formatEnds, upper)
-	input := []byte("hello\tworld\n")
-	want := []byte("HELLO^IWORLD$\n")
-	got := pipeline(input)
-	if !bytes.Equal(got, want) {
-		t.Errorf("Pipe() = %q, want %q", got, want)
-	}
-}
-
 func TestUnit_ProcessStream(t *testing.T) {
 	opts := CatOptions{
 		Number:   true,
@@ -178,47 +161,6 @@ func TestUnit_ProcessStream(t *testing.T) {
 	}
 	if state.LineNumber != 3 {
 		t.Errorf("state.LineNumber = %d, want 3", state.LineNumber)
-	}
-}
-
-func TestUnit_IsBrokenPipe(t *testing.T) {
-	if !ioutils.IsBrokenPipe(syscall.EPIPE) {
-		t.Error("expected syscall.EPIPE to be recognized as broken pipe")
-	}
-	if !ioutils.IsBrokenPipe(fmt.Errorf("write: broken pipe")) {
-		t.Error("expected 'broken pipe' string error to be recognized")
-	}
-	if ioutils.IsBrokenPipe(nil) {
-		t.Error("nil should not be broken pipe")
-	}
-	if ioutils.IsBrokenPipe(fmt.Errorf("file not found")) {
-		t.Error("file not found should not be broken pipe")
-	}
-}
-
-func TestUnit_IsSameAsOutput(t *testing.T) {
-	tmp := writeFile(t, "test_cycle.txt", "content\n")
-	f, err := os.Open(tmp)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-
-	// Comparing against itself should be true
-	if !fsutils.IsSameAsOutput(f, f) {
-		t.Error("expected same file to be detected as output cycle")
-	}
-
-	// Comparing against a different file should be false
-	other := writeFile(t, "other.txt", "other\n")
-	fOther, err := os.Open(other)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer fOther.Close()
-
-	if fsutils.IsSameAsOutput(f, fOther) {
-		t.Error("different files should not be detected as same output")
 	}
 }
 
@@ -1155,8 +1097,7 @@ func BenchmarkCat_Throughput(b *testing.B) {
 	}
 
 	b.SetBytes(int64(len(content)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		cmd := exec.Command(binaryPath, path)
 		cmd.Stdout = io.Discard
 		if err := cmd.Run(); err != nil {
@@ -1173,8 +1114,7 @@ func BenchmarkCat_NumberAndShowAll(b *testing.B) {
 	}
 
 	b.SetBytes(int64(len(content)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		cmd := exec.Command(binaryPath, "-nA", path)
 		cmd.Stdout = io.Discard
 		if err := cmd.Run(); err != nil {

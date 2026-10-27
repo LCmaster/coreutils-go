@@ -9,8 +9,8 @@ import (
 
 func newCommand() *cli.Command {
 	cmd := cli.NewCommand("true")
-	cmd.Helper.SetUsage("true [ignored command line arguments]", "true OPTION")
-	cmd.Helper.SetDescription("Exit with a status code indicating success.")
+	cmd.SetUsage("true [ignored command line arguments]", "true OPTION")
+	cmd.SetDescription("Exit with a status code indicating success.")
 	cmd.EnableAutoShortVersion()
 	cmd.EnableAutoShortHelp()
 	cmd.Run = func(_ *cli.Command, _ io.Reader, _, _ io.Writer) error {
@@ -25,6 +25,3 @@ func main() {
 		os.Exit(1)
 	}
 }
-
-
-

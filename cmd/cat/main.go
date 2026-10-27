@@ -2,8 +2,6 @@ package main
 
 import (
 	"bufio"
-	"errors"
-	"fmt"
 	"io"
 	"os"
 
@@ -21,66 +19,59 @@ func newCommand() *cli.Command {
 	cmd.AddExample("cat        Copy standard input to standard output.")
 
 	cmd.FlagFunc('A', "show-all", "equivalent to -vET", false, func(_ string) error {
-		cmd.Options.Bools["ShowNonPrinting"] = true
-		cmd.Options.Bools["ShowEnds"] = true
-		cmd.Options.Bools["ShowTabs"] = true
+		cmd.SetBool("ShowNonPrinting", true)
+		cmd.SetBool("ShowEnds", true)
+		cmd.SetBool("ShowTabs", true)
 		return nil
 	})
 	cmd.FlagFunc('b', "number-nonblank", "number nonempty output lines, overrides -n", false, func(_ string) error {
-		cmd.Options.Bools["NumberNonBlank"] = true
+		cmd.SetBool("NumberNonBlank", true)
 		return nil
 	})
 	cmd.FlagFunc('e', "", "equivalent to -vE", false, func(_ string) error {
-		cmd.Options.Bools["ShowNonPrinting"] = true
-		cmd.Options.Bools["ShowEnds"] = true
+		cmd.SetBool("ShowNonPrinting", true)
+		cmd.SetBool("ShowEnds", true)
 		return nil
 	})
 	cmd.FlagFunc('E', "show-ends", "display $ at end of each line", false, func(_ string) error {
-		cmd.Options.Bools["ShowEnds"] = true
+		cmd.SetBool("ShowEnds", true)
 		return nil
 	})
 	cmd.FlagFunc('n', "number", "number all output lines", false, func(_ string) error {
-		cmd.Options.Bools["Number"] = true
+		cmd.SetBool("Number", true)
 		return nil
 	})
 	cmd.FlagFunc('s', "squeeze-blank", "suppress repeated empty output lines", false, func(_ string) error {
-		cmd.Options.Bools["SqueezeBlank"] = true
+		cmd.SetBool("SqueezeBlank", true)
 		return nil
 	})
 	cmd.FlagFunc('t', "", "equivalent to -vT", false, func(_ string) error {
-		cmd.Options.Bools["ShowNonPrinting"] = true
-		cmd.Options.Bools["ShowTabs"] = true
+		cmd.SetBool("ShowNonPrinting", true)
+		cmd.SetBool("ShowTabs", true)
 		return nil
 	})
 	cmd.FlagFunc('T', "show-tabs", "display TAB characters as ^I", false, func(_ string) error {
-		cmd.Options.Bools["ShowTabs"] = true
+		cmd.SetBool("ShowTabs", true)
 		return nil
 	})
 	cmd.FlagFunc('u', "", "(ignored)", false, func(_ string) error {
-		cmd.Options.Bools["Unbuffered"] = true
+		cmd.SetBool("Unbuffered", true)
 		return nil
 	})
 	cmd.FlagFunc('v', "show-nonprinting", "use ^ and M- notation, except for LFD and TAB", false, func(_ string) error {
-		cmd.Options.Bools["ShowNonPrinting"] = true
+		cmd.SetBool("ShowNonPrinting", true)
 		return nil
 	})
 
-	cmd.OnError = func(c *cli.Command, stderr io.Writer, err error) int {
-		if stderr != nil {
-			fmt.Fprintf(stderr, "%v\nTry '%s --help' for more information.\n", err, c.Name)
-		}
-		return 1
-	}
-
 	cmd.Run = func(c *cli.Command, stdin io.Reader, stdout, stderr io.Writer) error {
 		opts := CatOptions{
-			NumberNonBlank:  c.Options.Bool("NumberNonBlank"),
-			Number:          c.Options.Bool("Number"),
-			ShowEnds:        c.Options.Bool("ShowEnds"),
-			ShowTabs:        c.Options.Bool("ShowTabs"),
-			ShowNonPrinting: c.Options.Bool("ShowNonPrinting"),
-			SqueezeBlank:    c.Options.Bool("SqueezeBlank"),
-			Unbuffered:      c.Options.Bool("Unbuffered"),
+			NumberNonBlank:  c.Bool("NumberNonBlank"),
+			Number:          c.Bool("Number"),
+			ShowEnds:        c.Bool("ShowEnds"),
+			ShowTabs:        c.Bool("ShowTabs"),
+			ShowNonPrinting: c.Bool("ShowNonPrinting"),
+			SqueezeBlank:    c.Bool("SqueezeBlank"),
+			Unbuffered:      c.Bool("Unbuffered"),
 		}
 		if opts.NumberNonBlank {
 			opts.Number = false
@@ -98,7 +89,7 @@ func newCommand() *cli.Command {
 				if ioutils.IsBrokenPipe(err) {
 					break
 				}
-				fmt.Fprintf(stderr, "cat: %s: %v\n", filename, err)
+				c.FileError(stderr, filename, err)
 				hasError = true
 			}
 			if err := writer.Flush(); err != nil && ioutils.IsBrokenPipe(err) {
@@ -107,7 +98,7 @@ func newCommand() *cli.Command {
 		}
 
 		if hasError {
-			return errors.New("exit status 1")
+			return cli.ErrExitFailure
 		}
 		return nil
 	}

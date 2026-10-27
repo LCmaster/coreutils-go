@@ -13,13 +13,8 @@ func resolvePhysicalDir() (string, error) {
 	return filepath.EvalSymlinks(path)
 }
 
-func readEnvPwd() (string, error) {
-	return os.Getenv("PWD"), nil
-}
-
 func resolveLogicalDir() (string, error) {
-	path, err := readEnvPwd()
-	if err == nil && isValidLogicalPath(path) {
+	if path := os.Getenv("PWD"); isValidLogicalPath(path) {
 		return path, nil
 	}
 	return resolvePhysicalDir()
